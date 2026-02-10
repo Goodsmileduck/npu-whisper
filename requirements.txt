@@ -1,0 +1,15 @@
+# Core - OpenVINO inference
+openvino>=2025.1
+openvino-genai>=2025.1
+
+# Model export
+optimum[openvino]
+transformers
+
+# Audio
+sounddevice
+numpy
+
+# Input/output
+keyboard
+pyperclip
