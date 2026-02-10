@@ -422,18 +422,20 @@ class DictationApp:
                 log("Recording too short, ignoring.")
                 return
 
-            # Transcribe in background to keep UI responsive
-            self.ensure_model()
-            text = self.whisper.transcribe(
-                audio,
-                sample_rate=self.config["sample_rate"],
-                language=self.config["language"],
-            )
+            # Transcribe in background to keep hotkey listener responsive
+            def _transcribe_and_type():
+                self.ensure_model()
+                text = self.whisper.transcribe(
+                    audio,
+                    sample_rate=self.config["sample_rate"],
+                    language=self.config["language"],
+                )
+                if text:
+                    type_text(text, auto_enter=self.config["auto_enter"])
+                else:
+                    log("No speech detected.")
 
-            if text:
-                type_text(text, auto_enter=self.config["auto_enter"])
-            else:
-                log("No speech detected.")
+            threading.Thread(target=_transcribe_and_type, daemon=True).start()
         else:
             # Start recording
             if self.config["beep_on_start"]:
