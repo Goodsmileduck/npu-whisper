@@ -13,3 +13,6 @@ numpy
 # Input/output
 keyboard
 pyperclip
+
+# Testing
+pytest
