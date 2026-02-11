@@ -8,10 +8,7 @@ Usage: python dictation_engine.py [--setup] [--device NPU|GPU|CPU] [--model base
 import sys
 import os
 import time
-import wave
 import json
-import struct
-import tempfile
 import argparse
 import threading
 from pathlib import Path
@@ -31,25 +28,33 @@ DEFAULT_CONFIG = {
     "language": "en",          # Language code or "auto"
     "hotkey": "ctrl+alt+d",    # Global hotkey to toggle recording
     "auto_enter": False,       # Press Enter after pasting (useful for Claude Code)
-    "auto_punctuate": True,    # Let the model handle punctuation
     "beep_on_start": True,     # Audio feedback when recording starts/stops
     "max_record_seconds": 60,  # Max recording length
     "sample_rate": 16000,      # Whisper expects 16kHz
 }
 
-# Model download URLs (OpenVINO IR format from HuggingFace)
+# Model registry: pre-exported OpenVINO IR models from HuggingFace (preferred for NPU)
+# Fallback uses optimum-cli export from original HuggingFace models
 MODEL_REGISTRY = {
     "base": {
         "repo": "openai/whisper-base",
+        "ov_repo": "OpenVINO/whisper-base-int8-ov",
         "description": "Fastest, good for short commands (~1GB RAM)",
     },
     "small": {
         "repo": "openai/whisper-small",
+        "ov_repo": "OpenVINO/whisper-small-int8-ov",
         "description": "Balanced speed/accuracy (~2GB RAM)",
     },
     "medium": {
         "repo": "openai/whisper-medium",
+        "ov_repo": "OpenVINO/whisper-medium-int8-ov",
         "description": "Best accuracy on NPU (~4GB RAM, slower)",
+    },
+    "turbo": {
+        "repo": "openai/whisper-large-v3-turbo",
+        "ov_repo": "FluidInference/whisper-large-v3-turbo-int4-ov-npu",
+        "description": "Large-v3 distilled, INT4 NPU-optimized (~566MB)",
     },
 }
 
@@ -87,36 +92,65 @@ def save_config(config: dict):
     log(f"Config saved to {CONFIG_FILE}")
 
 
+def validate_config(config: dict):
+    """Validate config values. Raises ValueError on invalid values."""
+    valid_devices = {"NPU", "GPU", "CPU"}
+    if config.get("device") not in valid_devices:
+        raise ValueError(f"device must be one of {valid_devices}, got '{config.get('device')}'")
+
+    valid_models = set(MODEL_REGISTRY.keys())
+    if config.get("model_size") not in valid_models:
+        raise ValueError(f"model_size must be one of {valid_models}, got '{config.get('model_size')}'")
+
+    sr = config.get("sample_rate")
+    if not isinstance(sr, (int, float)) or sr <= 0:
+        raise ValueError(f"sample_rate must be a positive number, got '{sr}'")
+
+    max_rec = config.get("max_record_seconds")
+    if max_rec is not None and (not isinstance(max_rec, (int, float)) or max_rec <= 0):
+        raise ValueError(f"max_record_seconds must be a positive number or null, got '{max_rec}'")
+
+
 # ---------------------------------------------------------------------------
 # Model setup (export Whisper to OpenVINO IR format)
 # ---------------------------------------------------------------------------
 def setup_model(config: dict):
-    """Export Whisper model to OpenVINO format optimized for NPU."""
+    """Download or export Whisper model in OpenVINO format."""
     model_size = config["model_size"]
     model_info = MODEL_REGISTRY[model_size]
     model_path = MODEL_DIR / f"whisper-{model_size}-openvino"
 
     if model_path.exists() and any(model_path.glob("*.xml")):
-        log(f"Model already exported at {model_path}")
+        log(f"Model already available at {model_path}")
         return model_path
-
-    log(f"Exporting {model_info['repo']} to OpenVINO format...")
-    log(f"This may take 5-15 minutes on first run (NPU compilation + caching)")
 
     MODEL_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Use optimum-cli to export to OpenVINO format
+    # Strategy 1: Download pre-exported OpenVINO model from HuggingFace (preferred)
+    ov_repo = model_info.get("ov_repo")
+    if ov_repo:
+        log(f"Downloading pre-exported model from {ov_repo}...")
+        try:
+            from huggingface_hub import snapshot_download
+            snapshot_download(ov_repo, local_dir=str(model_path))
+            if any(model_path.glob("*.xml")):
+                log(f"Model downloaded to {model_path}")
+                return model_path
+        except Exception as e:
+            log(f"Download failed: {e}, falling back to local export...")
+
+    # Strategy 2: Export locally using optimum-cli
     import subprocess
-    
-    # Determine weight format based on device
+    log(f"Exporting {model_info['repo']} to OpenVINO format...")
+    log(f"This may take several minutes on first run.")
+
     weight_format = "int8" if config["device"] == "NPU" else "fp16"
 
     cmd = [
-        sys.executable, "-m", "optimum.cli", "export", "openvino",
+        sys.executable, "-m", "optimum.commands.optimum_cli", "export", "openvino",
         "--model", model_info["repo"],
         "--task", "automatic-speech-recognition",
         "--weight-format", weight_format,
-        "--disable-stateful",  # Required for NPU
         str(model_path),
     ]
 
@@ -124,14 +158,8 @@ def setup_model(config: dict):
     result = subprocess.run(cmd, capture_output=True, text=True)
 
     if result.returncode != 0:
-        log(f"Export STDERR: {result.stderr}")
-        # Fallback: try without --disable-stateful
-        cmd_fallback = [c for c in cmd if c != "--disable-stateful"]
-        log(f"Retrying without --disable-stateful...")
-        result = subprocess.run(cmd_fallback, capture_output=True, text=True)
-        if result.returncode != 0:
-            log(f"Export failed: {result.stderr}")
-            sys.exit(1)
+        log(f"Export failed: {result.stderr}")
+        sys.exit(1)
 
     log(f"Model exported to {model_path}")
     return model_path
@@ -244,24 +272,29 @@ class WhisperNPU:
 class AudioRecorder:
     """Record audio from microphone using sounddevice."""
 
-    def __init__(self, sample_rate: int = 16000, channels: int = 1):
+    def __init__(self, sample_rate: int = 16000, channels: int = 1,
+                 max_record_seconds: float = None):
         self.sample_rate = sample_rate
         self.channels = channels
+        self.max_record_seconds = max_record_seconds
         self.recording = False
         self._frames = []
         self._stream = None
+        self._lock = threading.Lock()
+        self._timer = None
 
     def start(self):
         """Start recording."""
         import sounddevice as sd
-        import numpy as np
 
-        self._frames = []
-        self.recording = True
+        with self._lock:
+            self._frames = []
+            self.recording = True
 
         def callback(indata, frames, time_info, status):
-            if self.recording:
-                self._frames.append(indata.copy())
+            with self._lock:
+                if self.recording:
+                    self._frames.append(indata.copy())
 
         self._stream = sd.InputStream(
             samplerate=self.sample_rate,
@@ -273,20 +306,40 @@ class AudioRecorder:
         self._stream.start()
         log("Recording started...")
 
+        # Enforce max recording duration
+        if self.max_record_seconds:
+            self._timer = threading.Timer(self.max_record_seconds, self._timeout_stop)
+            self._timer.daemon = True
+            self._timer.start()
+
+    def _timeout_stop(self):
+        """Called when max_record_seconds is reached."""
+        if self.recording:
+            log(f"Max recording time ({self.max_record_seconds}s) reached, stopping.")
+            self.stop()
+
     def stop(self):
         """Stop recording and return audio as numpy array."""
         import numpy as np
 
-        self.recording = False
+        with self._lock:
+            self.recording = False
+            frames = list(self._frames)
+            self._frames = []
+
+        if self._timer:
+            self._timer.cancel()
+            self._timer = None
+
         if self._stream:
             self._stream.stop()
             self._stream.close()
             self._stream = None
 
-        if not self._frames:
+        if not frames:
             return np.array([], dtype=np.float32)
 
-        audio = np.concatenate(self._frames, axis=0).flatten()
+        audio = np.concatenate(frames, axis=0).flatten()
         duration = len(audio) / self.sample_rate
         log(f"Recording stopped. Duration: {duration:.1f}s")
         return audio
@@ -358,9 +411,30 @@ def _type_text_ctypes(text: str):
             ("dwExtraInfo", ctypes.POINTER(ctypes.c_ulong)),
         ]
 
+    class MOUSEINPUT(ctypes.Structure):
+        _fields_ = [
+            ("dx", ctypes.c_long),
+            ("dy", ctypes.c_long),
+            ("mouseData", wintypes.DWORD),
+            ("dwFlags", wintypes.DWORD),
+            ("time", wintypes.DWORD),
+            ("dwExtraInfo", ctypes.POINTER(ctypes.c_ulong)),
+        ]
+
+    class HARDWAREINPUT(ctypes.Structure):
+        _fields_ = [
+            ("uMsg", wintypes.DWORD),
+            ("wParamL", wintypes.WORD),
+            ("wParamH", wintypes.WORD),
+        ]
+
     class INPUT(ctypes.Structure):
         class _INPUT(ctypes.Union):
-            _fields_ = [("ki", KEYBDINPUT)]
+            _fields_ = [
+                ("ki", KEYBDINPUT),
+                ("mi", MOUSEINPUT),
+                ("hi", HARDWAREINPUT),
+            ]
         _fields_ = [("type", wintypes.DWORD), ("_input", _INPUT)]
 
     for char in text:
@@ -398,7 +472,10 @@ class DictationApp:
 
     def __init__(self, config: dict):
         self.config = config
-        self.recorder = AudioRecorder(sample_rate=config["sample_rate"])
+        self.recorder = AudioRecorder(
+            sample_rate=config["sample_rate"],
+            max_record_seconds=config.get("max_record_seconds"),
+        )
         self.whisper = None  # Lazy-loaded
         self.is_recording = False
 
@@ -492,26 +569,20 @@ def run_setup():
     log(f"Python: {sys.version}")
     
     # 2. Install pip dependencies
-    packages = [
-        "openvino>=2025.1",
-        "openvino-genai>=2025.1", 
-        "optimum[openvino]",
-        "transformers",
-        "sounddevice",
-        "numpy",
-        "keyboard",
-        "pyperclip",
-    ]
-
-    log("\nInstalling dependencies...")
-    for pkg in packages:
-        log(f"  Installing {pkg}...")
+    requirements_file = Path(__file__).parent / "requirements.txt"
+    if requirements_file.exists():
+        log("\nInstalling dependencies from requirements.txt...")
         result = subprocess.run(
-            [sys.executable, "-m", "pip", "install", pkg, "--quiet"],
+            [sys.executable, "-m", "pip", "install", "-r", str(requirements_file), "--quiet"],
             capture_output=True, text=True,
         )
         if result.returncode != 0:
-            log(f"  WARNING: Failed to install {pkg}: {result.stderr[:200]}")
+            log(f"  WARNING: pip install failed: {result.stderr[:500]}")
+        else:
+            log("  Dependencies installed successfully.")
+    else:
+        log(f"\nWARNING: requirements.txt not found at {requirements_file}")
+        log("  Install manually: pip install -r requirements.txt")
 
     # 3. Check NPU availability
     log("\nChecking available devices...")
@@ -522,14 +593,14 @@ def run_setup():
         log(f"  Available OpenVINO devices: {devices}")
         
         if "NPU" in devices:
-            log("  ✓ NPU detected!")
+            log("  [OK] NPU detected!")
         else:
-            log("  ✗ NPU not found. Will fall back to GPU or CPU.")
+            log("  [--] NPU not found. Will fall back to GPU or CPU.")
             log("    Make sure Intel NPU driver is installed via Windows Update")
             log("    or from: https://www.intel.com/content/www/us/en/download/794734/")
         
         if "GPU" in devices:
-            log("  ✓ GPU detected (Intel iGPU)")
+            log("  [OK] GPU detected (Intel iGPU)")
     except ImportError:
         log("  Could not import openvino - installation may have failed")
 
@@ -576,7 +647,7 @@ def main():
     parser = argparse.ArgumentParser(description="NPU Dictation Engine")
     parser.add_argument("--setup", action="store_true", help="Run first-time setup")
     parser.add_argument("--device", choices=["NPU", "GPU", "CPU"], help="Override device")
-    parser.add_argument("--model", choices=["base", "small", "medium"], help="Model size")
+    parser.add_argument("--model", choices=["base", "small", "medium", "turbo"], help="Model size")
     parser.add_argument("--language", type=str, help="Language code (e.g., en, ru, id)")
     parser.add_argument("--auto-enter", action="store_true", help="Press Enter after typing")
     parser.add_argument("--hotkey", type=str, help="Global hotkey (e.g., ctrl+alt+d)")
@@ -599,6 +670,8 @@ def main():
         config["auto_enter"] = True
     if args.hotkey:
         config["hotkey"] = args.hotkey
+
+    validate_config(config)
 
     app = DictationApp(config)
     app.run()

@@ -159,7 +159,7 @@ You can force a device: `.\Start-Dictation.ps1 -Device CPU`
 ## Project Structure
 
 ```
-npu-dictation/
+npu-whisper/
 ├── Start-Dictation.ps1     # PowerShell launcher (entry point)
 ├── dictation_engine.py      # Python engine (core logic)
 └── README.md                # This file

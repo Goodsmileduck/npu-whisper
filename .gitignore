@@ -26,3 +26,6 @@ Thumbs.db
 *.log
 models/
 config.json
+CLAUDE.md
+docs/plans/
+.claude/settings.local.json

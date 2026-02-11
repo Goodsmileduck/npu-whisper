@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     NPU Dictation Engine - PowerShell Launcher
     Local voice-to-text powered by Intel NPU via OpenVINO + Whisper
@@ -29,7 +29,7 @@ param(
     [switch]$Setup,
     [ValidateSet("NPU", "GPU", "CPU")]
     [string]$Device,
-    [ValidateSet("base", "small", "medium")]
+    [ValidateSet("base", "small", "medium", "turbo")]
     [string]$Model,
     [string]$Language,
     [switch]$AutoEnter,
@@ -40,17 +40,17 @@ param(
 $ErrorActionPreference = "Stop"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $EnginePath = Join-Path $ScriptDir "dictation_engine.py"
-$VenvDir = Join-Path $env:USERPROFILE ".npu-dictation" "venv"
+$VenvDir = Join-Path (Join-Path $env:USERPROFILE ".npu-dictation") "venv"
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 function Write-Banner {
     Write-Host ""
-    Write-Host "  ╔══════════════════════════════════════════╗" -ForegroundColor Cyan
-    Write-Host "  ║     NPU Dictation Engine                 ║" -ForegroundColor Cyan
-    Write-Host "  ║     Local Whisper on Intel NPU            ║" -ForegroundColor Cyan
-    Write-Host "  ╚══════════════════════════════════════════╝" -ForegroundColor Cyan
+    Write-Host "  ╔══════════════════════════════════════╗" -ForegroundColor Cyan
+    Write-Host "  ║   NPU Dictation Engine               ║" -ForegroundColor Cyan
+    Write-Host "  ║   Local Whisper on Intel NPU         ║" -ForegroundColor Cyan
+    Write-Host "  ╚══════════════════════════════════════╝" -ForegroundColor Cyan
     Write-Host ""
 }
 
@@ -59,7 +59,7 @@ function Test-PythonAvailable {
     foreach ($cmd in $pythonCmds) {
         try {
             $version = & $cmd --version 2>&1
-            if ($version -match "Python 3\.(1[0-9]|[2-9][0-9])") {
+            if ($version -match 'Python 3\.(1[0-9]|[2-9][0-9])') {
                 return $cmd
             }
         } catch {}
@@ -69,7 +69,7 @@ function Test-PythonAvailable {
 
 function Get-PythonExe {
     # Use venv if it exists
-    $venvPython = Join-Path $VenvDir "Scripts" "python.exe"
+    $venvPython = Join-Path (Join-Path $VenvDir "Scripts") "python.exe"
     if (Test-Path $venvPython) {
         return $venvPython
     }
@@ -114,7 +114,7 @@ function Test-NPUDriver {
     } else {
         Write-Host "  NPU device not found in Device Manager." -ForegroundColor Yellow
         Write-Host "  This could mean:" -ForegroundColor Yellow
-        Write-Host "    - Your CPU doesn't have an NPU" -ForegroundColor Yellow
+        Write-Host "    - Your CPU does not have an NPU" -ForegroundColor Yellow
         Write-Host "    - NPU driver needs to be installed via Windows Update" -ForegroundColor Yellow
         Write-Host "    - Or manually from Intel: https://www.intel.com/content/www/us/en/download/794734/" -ForegroundColor Yellow
         return $false
@@ -148,7 +148,7 @@ function Invoke-Setup {
         Write-Host "  Venv already exists at: $VenvDir" -ForegroundColor Green
     }
     
-    $venvPython = Join-Path $VenvDir "Scripts" "python.exe"
+    $venvPython = Join-Path (Join-Path $VenvDir "Scripts") "python.exe"
 
     # 3. Check NPU
     Write-Host ""
@@ -157,7 +157,7 @@ function Invoke-Setup {
 
     # 4. Run Python setup
     Write-Host ""
-    Write-Host "Step 4: Installing Python dependencies & exporting model..." -ForegroundColor Yellow
+    Write-Host 'Step 4: Installing Python dependencies and exporting model...' -ForegroundColor Yellow
     Write-Host "  This will take several minutes on first run." -ForegroundColor Yellow
     Write-Host ""
     
@@ -181,12 +181,12 @@ function Start-Dictation {
     $python = Get-PythonExe
 
     # Build arguments
-    $args = @()
-    if ($Device)    { $args += "--device", $Device }
-    if ($Model)     { $args += "--model", $Model }
-    if ($Language)   { $args += "--language", $Language }
-    if ($AutoEnter) { $args += "--auto-enter" }
-    if ($Hotkey)    { $args += "--hotkey", $Hotkey }
+    $engineArgs = @()
+    if ($Device)    { $engineArgs += "--device", $Device }
+    if ($Model)     { $engineArgs += "--model", $Model }
+    if ($Language)  { $engineArgs += "--language", $Language }
+    if ($AutoEnter) { $engineArgs += "--auto-enter" }
+    if ($Hotkey)    { $engineArgs += "--hotkey", $Hotkey }
 
     # Check if engine file exists
     if (-not (Test-Path $EnginePath)) {
@@ -196,7 +196,7 @@ function Start-Dictation {
     }
 
     # Check if model is set up
-    $configFile = Join-Path $env:USERPROFILE ".npu-dictation" "config.json"
+    $configFile = Join-Path (Join-Path $env:USERPROFILE ".npu-dictation") "config.json"
     if (-not (Test-Path $configFile)) {
         Write-Host "First-time setup required. Running setup..." -ForegroundColor Yellow
         Write-Host ""
@@ -213,7 +213,7 @@ function Start-Dictation {
     }
 
     # Launch the engine
-    & $python $EnginePath @args
+    & $python $EnginePath @engineArgs
 }
 
 # ---------------------------------------------------------------------------
