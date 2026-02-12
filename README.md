@@ -43,13 +43,15 @@ Press **Ctrl+Space** to start recording, press again to stop. Transcribed text i
 
 ## Models
 
-| Model | Params | Device | Speed (3s audio) | Languages | Notes |
-|-------|--------|--------|-------------------|-----------|-------|
-| **base** | 74M | NPU | 0.2s | All 15 | Default, great for short commands |
-| **small** | 244M | NPU | 0.6s | All 15 | Balanced speed/accuracy |
-| **parakeet** | 600M | NPU+GPU | 0.2s | English only | Best accuracy (3.7% WER) |
-| **medium** | 769M | GPU | — | All 15 | High accuracy, slower |
-| **turbo** | 809M | GPU | 2.4s | All 15 | Largest, best multilingual |
+| Model | Params | Device | Speed (3s audio) | WER | Languages | Notes |
+|-------|--------|--------|-------------------|-----|-----------|-------|
+| **base** | 74M | NPU | 0.2s | 5.0% | All 15 | Default, great for short commands |
+| **small** | 244M | NPU | 0.6s | 3.4% | All 15 | Balanced speed/accuracy |
+| **parakeet** | 600M | NPU+GPU | 0.2s | 3.7% | English only | Best English accuracy on NPU |
+| **medium** | 769M | GPU | — | 2.9% | All 15 | High accuracy, slower |
+| **turbo** | 809M | GPU | 2.4s | 2.3% | All 15 | Best multilingual quality |
+
+> **WER** = Word Error Rate on LibriSpeech test-clean (lower is better). Whisper WER from [HuggingFace model cards](https://huggingface.co/openai/whisper-base); Parakeet from [NVIDIA](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3).
 
 The Settings dialog shows which models are already downloaded and filters them by your selected language (e.g., selecting Russian hides the English-only Parakeet model).
 

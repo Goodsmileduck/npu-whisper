@@ -42,7 +42,7 @@ MODEL_REGISTRY = {
     "base": {
         "repo": "openai/whisper-base",
         "ov_repo": "OpenVINO/whisper-base-int8-ov",
-        "description": "74M params. Fast, good for short commands.",
+        "description": "74M params, 5.0% WER. Fast, good for short commands.",
         "preferred_device": "NPU",
         "backend": "whisper",
         "local_dir": "whisper-base-openvino",
@@ -51,7 +51,7 @@ MODEL_REGISTRY = {
     "small": {
         "repo": "openai/whisper-small",
         "ov_repo": "OpenVINO/whisper-small-int8-ov",
-        "description": "244M params. Balanced speed/accuracy.",
+        "description": "244M params, 3.4% WER. Balanced speed/accuracy.",
         "preferred_device": "NPU",
         "backend": "whisper",
         "local_dir": "whisper-small-openvino",
@@ -60,7 +60,7 @@ MODEL_REGISTRY = {
     "medium": {
         "repo": "openai/whisper-medium",
         "ov_repo": "OpenVINO/whisper-medium-int8-ov",
-        "description": "769M params. High accuracy, slower.",
+        "description": "769M params, 2.9% WER. High accuracy, slower.",
         "preferred_device": "GPU",
         "backend": "whisper",
         "local_dir": "whisper-medium-openvino",
@@ -69,7 +69,7 @@ MODEL_REGISTRY = {
     "turbo": {
         "repo": "openai/whisper-large-v3-turbo",
         "ov_repo": "FluidInference/whisper-large-v3-turbo-int4-ov-npu",
-        "description": "809M params, INT4. Best quality.",
+        "description": "809M params, 2.3% WER. Best multilingual quality.",
         "preferred_device": "GPU",
         "backend": "whisper",
         "local_dir": "whisper-turbo-openvino",
