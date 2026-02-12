@@ -27,9 +27,10 @@
 
 param(
     [switch]$Setup,
+    [switch]$CLI,
     [ValidateSet("NPU", "GPU", "CPU")]
     [string]$Device,
-    [ValidateSet("base", "small", "medium", "turbo")]
+    [ValidateSet("base", "small", "medium", "turbo", "parakeet")]
     [string]$Model,
     [string]$Language,
     [switch]$AutoEnter,
@@ -40,6 +41,7 @@ param(
 $ErrorActionPreference = "Stop"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $EnginePath = Join-Path $ScriptDir "dictation_engine.py"
+$AppPath = Join-Path $ScriptDir "app.py"
 $VenvDir = Join-Path (Join-Path $env:USERPROFILE ".npu-dictation") "venv"
 
 # ---------------------------------------------------------------------------
@@ -212,8 +214,12 @@ function Start-Dictation {
         Write-Host ""
     }
 
-    # Launch the engine
-    & $python $EnginePath @engineArgs
+    # Launch engine: GUI mode by default, -CLI for console-only mode
+    if ($CLI) {
+        & $python $EnginePath @engineArgs
+    } else {
+        & $python $AppPath @engineArgs
+    }
 }
 
 # ---------------------------------------------------------------------------

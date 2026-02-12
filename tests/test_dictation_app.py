@@ -18,6 +18,7 @@ class TestTranscriptionThreading:
         # Mock the whisper model with a slow transcribe
         app.whisper = MagicMock()
         app.whisper.transcribe = MagicMock(side_effect=lambda *a, **kw: (time.sleep(0.5) or "hello"))
+        app._model_ready.set()  # Mark model as loaded
 
         # Mock recorder to return some audio
         import numpy as np

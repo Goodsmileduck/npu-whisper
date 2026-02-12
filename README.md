@@ -1,195 +1,181 @@
-# npu-whisper
-App for do dictation using Intel NPU
-# NPU Dictation Engine
+# NPU Whisper
 
-Local voice-to-text dictation powered by your Intel NPU (AI Boost) — zero cloud, zero subscription, zero data leaving your machine.
+Local voice-to-text dictation for Windows, powered by Intel NPU via OpenVINO. Press a hotkey, speak, and text appears at your cursor. Zero cloud, zero cost, zero data leaving your machine.
 
-## Architecture
+![Windows](https://img.shields.io/badge/platform-Windows%2011-0078D4?logo=windows)
+![Python](https://img.shields.io/badge/python-3.10+-3776AB?logo=python&logoColor=white)
+![License](https://img.shields.io/badge/license-MIT-green)
 
-```
-┌─────────────────────────────────────────────────────────┐
-│  Start-Dictation.ps1  (PowerShell launcher)             │
-│  - Manages venv, checks NPU driver, launches engine     │
-└────────────────────────┬────────────────────────────────┘
-                         │
-┌────────────────────────▼────────────────────────────────┐
-│  dictation_engine.py   (Python app)                     │
-│                                                         │
-│  ┌──────────────┐   ┌──────────────┐   ┌────────────┐  │
-│  │  Global       │   │  Audio       │   │  Text      │  │
-│  │  Hotkey       │──▶│  Recorder    │──▶│  Output    │  │
-│  │  (keyboard)   │   │  (sounddev)  │   │  (paste)   │  │
-│  └──────────────┘   └──────┬───────┘   └────────────┘  │
-│                            │                            │
-│                  ┌─────────▼─────────┐                  │
-│                  │  WhisperNPU       │                  │
-│                  │  (OpenVINO)       │                  │
-│                  │                   │                  │
-│                  │  NPU ← preferred  │                  │
-│                  │  GPU ← fallback   │                  │
-│                  │  CPU ← last resort│                  │
-│                  └───────────────────┘                  │
-└─────────────────────────────────────────────────────────┘
-                         │
-              ┌──────────▼──────────┐
-              │  Intel NPU          │
-              │  (AI Boost)         │
-              │  via OpenVINO IR    │
-              │  INT8 quantized     │
-              └─────────────────────┘
-```
+## Features
 
-## How It Works
-
-1. **Hotkey press** (Ctrl+Alt+D) → starts recording from microphone
-2. **Hotkey press again** → stops recording
-3. **Audio** → sent to Whisper model running on your NPU via OpenVINO
-4. **Transcribed text** → pasted into whatever window is active (terminal, browser, etc.)
-
-The model runs **100% locally** on your Intel NPU. No internet required after setup.
+- **NPU-accelerated** — runs on Intel AI Boost (Meteor Lake / Lunar Lake / Arrow Lake)
+- **5 models** — Whisper base/small/medium/turbo + Parakeet TDT 0.6B (best accuracy)
+- **15 languages** — English, Russian, Spanish, French, German, Japanese, Chinese, Korean, and more
+- **Dynamic Island overlay** — always-visible floating pill with waveform, timer, and status
+- **System tray** — lives in your taskbar, right-click for settings/history
+- **One-click settings** — language-first model picker with download status badges
+- **Claude Code mode** — auto-paste + Enter for hands-free prompt submission
+- **Audio chimes** — pleasant start/stop feedback
+- **Auto-fallback** — NPU -> GPU -> CPU, DEVICE_LOST auto-recovery
 
 ## Requirements
 
-- **OS:** Windows 10/11
-- **CPU:** Intel Core Ultra (Meteor Lake / Lunar Lake) with NPU, or any Intel CPU (falls back to iGPU/CPU)
-- **Python:** 3.10+
-- **NPU Driver:** Intel NPU driver via Windows Update or [manual download](https://www.intel.com/content/www/us/en/download/794734/)
+- **Windows 11**
+- **Intel Core Ultra** CPU with NPU (Meteor Lake / Lunar Lake / Arrow Lake), or any Intel CPU with iGPU
+- **Python 3.10+**
+- **16 GB RAM** recommended (NPU/GPU share system memory)
 
 ## Quick Start
 
 ```powershell
-# 1. First-time setup (installs deps, detects NPU, exports Whisper model)
+# 1. Clone
+git clone https://github.com/Goodsmileduck/npu-whisper.git
+cd npu-whisper
+
+# 2. First-time setup (creates venv, installs deps, downloads model, warms NPU cache)
 .\Start-Dictation.ps1 -Setup
 
-# 2. Start dictating
+# 3. Launch (GUI mode with system tray + Dynamic Island overlay)
 .\Start-Dictation.ps1
-
-# 3. Press Ctrl+Alt+D to start recording, press again to stop
-#    Text appears wherever your cursor is!
 ```
 
-## Usage with Claude Code
+Press **Ctrl+Space** to start recording, press again to stop. Transcribed text is pasted at your cursor.
+
+## Models
+
+| Model | Params | Device | Speed (3s audio) | Languages | Notes |
+|-------|--------|--------|-------------------|-----------|-------|
+| **base** | 74M | NPU | 0.2s | All 15 | Default, great for short commands |
+| **small** | 244M | NPU | 0.6s | All 15 | Balanced speed/accuracy |
+| **parakeet** | 600M | NPU+GPU | 0.2s | English only | Best accuracy (3.7% WER) |
+| **medium** | 769M | GPU | — | All 15 | High accuracy, slower |
+| **turbo** | 809M | GPU | 2.4s | All 15 | Largest, best multilingual |
+
+The Settings dialog shows which models are already downloaded and filters them by your selected language (e.g., selecting Russian hides the English-only Parakeet model).
+
+## Usage
+
+### GUI Mode (default)
 
 ```powershell
-# Auto-press Enter after dictation — speaks directly to Claude Code
-.\Start-Dictation.ps1 -AutoEnter
+.\Start-Dictation.ps1
+```
 
-# Custom hotkey that won't conflict with terminal shortcuts
-.\Start-Dictation.ps1 -AutoEnter -Hotkey "ctrl+shift+space"
+Launches with a Dynamic Island overlay at the top of your screen and a system tray icon. Click the green dot or press Ctrl+Space to record.
+
+### CLI Mode
+
+```powershell
+.\Start-Dictation.ps1 -CLI
+```
+
+Console-only, no GUI. Press Ctrl+Space to toggle recording.
+
+### Claude Code Mode
+
+```powershell
+.\Start-Dictation.ps1 -AutoEnter
+```
+
+Pastes text and presses Enter automatically — speak your prompt and it submits to Claude Code.
+
+### Override Settings
+
+```powershell
+.\Start-Dictation.ps1 -Device GPU -Model turbo -Language ru
 ```
 
 ## Configuration
 
-Config is stored at `~/.npu-dictation/config.json`:
+Stored at `~/.npu-dictation/config.json`:
 
 ```json
 {
   "device": "NPU",
   "model_size": "base",
   "language": "en",
-  "hotkey": "ctrl+alt+d",
+  "hotkey": "ctrl+space",
   "auto_enter": false,
-  "auto_punctuate": true,
   "beep_on_start": true,
   "max_record_seconds": 60,
   "sample_rate": 16000
 }
 ```
 
-### CLI Overrides
+Or change settings from the GUI: right-click the system tray icon and select **Settings**.
 
-```powershell
-# Use GPU instead of NPU
-.\Start-Dictation.ps1 -Device GPU
+## File Paths
 
-# Use larger model for better accuracy
-.\Start-Dictation.ps1 -Model small
+| Path | Purpose |
+|------|---------|
+| `~/.npu-dictation/config.json` | User configuration |
+| `~/.npu-dictation/models/` | Downloaded model files |
+| `~/.npu-dictation/ov-cache/` | OpenVINO compilation cache (do not delete) |
+| `~/.npu-dictation/dictation.log` | Runtime log |
+| `~/.npu-dictation/venv/` | Python virtual environment |
 
-# Russian language
-.\Start-Dictation.ps1 -Language ru
+## How It Works
 
-# Indonesian
-.\Start-Dictation.ps1 -Language id
+```
++-------------------+     +------------------+     +------------------+
+|  Ctrl+Space       | --> |  Microphone      | --> |  Whisper or      |
+|  (global hotkey)  |     |  16kHz mono      |     |  Parakeet model  |
++-------------------+     +------------------+     +--------+---------+
+                                                            |
+                          +------------------+              |
+                          |  Clipboard paste | <------------+
+                          |  into any window |
+                          +------------------+
 ```
 
-## Model Sizes
+The model runs **100% locally** on your Intel NPU. No internet required after initial model download.
 
-| Model  | RAM    | NPU Speed  | Accuracy | Best For                    |
-|--------|--------|------------|----------|-----------------------------|
-| base   | ~1 GB  | Very fast  | Good     | Short commands, Claude Code |
-| small  | ~2 GB  | Fast       | Better   | General dictation           |
-| medium | ~4 GB  | Moderate   | Best     | Long-form, technical terms  |
+**Whisper** models use OpenVINO GenAI's `WhisperPipeline` with INT8 quantization on NPU or GPU.
 
-> **Note:** `large` model exceeds current NPU memory limits and is not supported.
+**Parakeet TDT** uses a three-stage hybrid pipeline for best accuracy:
 
-## If NPU Isn't Available
-
-The engine automatically falls back:
-1. **NPU** → fastest, lowest power (requires Intel Core Ultra)
-2. **GPU** → Intel iGPU via OpenVINO, still fast
-3. **CPU** → works on any machine, slower but reliable
-
-You can force a device: `.\Start-Dictation.ps1 -Device CPU`
+```
++---------------+     +----------------+     +----------------+
+|  nemo128.onnx | --> |  Encoder       | --> |  TDT Decoder   |
+|  Mel spectro  |     |  OpenVINO NPU  |     |  OpenVINO GPU  |
+|  (CPU)        |     |                |     |  (CPU fallback)|
++---------------+     +----------------+     +----------------+
+```
 
 ## Troubleshooting
 
-### "NPU device not found"
+### NPU device not found
 - Check Device Manager for "Intel(R) AI Boost" or "Intel(R) NPU Accelerator"
-- Install/update NPU driver from Windows Update or Intel's site
-- Reboot after driver install
+- Install/update NPU driver from Windows Update or [Intel's site](https://www.intel.com/content/www/us/en/download/794734/)
+- Minimum driver version: 32.0.100.3104
 
-### Slow first transcription
-- First run compiles the model for NPU (5-15 min). Cached after that.
-- Subsequent startups are much faster.
+### Slow first run
+OpenVINO compiles the model graph for your specific NPU on first launch. This takes 1-15 minutes depending on model size and is cached for subsequent runs.
 
-### Model export fails
-- Ensure you have enough disk space (~2-5 GB for model files)
-- Try: `.\Start-Dictation.ps1 -Setup -Device CPU` to verify basics work
-- Then retry with NPU
+### DEVICE_LOST error
+The NPU driver crashed. Reboot to reset it. The GUI auto-falls back to GPU when this happens.
 
 ### Hotkey doesn't work
-- Run PowerShell as Administrator
+- PowerShell must run as **Administrator** (the `keyboard` library requires elevated privileges)
 - Check no other app is capturing the same hotkey
-- Try a different hotkey: `-Hotkey "ctrl+shift+space"`
+- Try a different hotkey: `.\Start-Dictation.ps1 -Hotkey "ctrl+shift+space"`
 
 ### Audio not recording
-- Check Windows microphone permissions (Settings → Privacy → Microphone)
+- Check Windows Settings -> Privacy -> Microphone permissions
 - Ensure your mic is the default recording device
+- Select a specific mic in the Settings dialog
 
-## Project Structure
+## Development
 
+```powershell
+# Run tests (82 tests)
+~\.npu-dictation\venv\Scripts\python.exe -m pytest tests/ -v
+
+# Auto-reload during development
+pip install watchfiles
+watchfiles "python app.py" .
 ```
-npu-whisper/
-├── Start-Dictation.ps1     # PowerShell launcher (entry point)
-├── dictation_engine.py      # Python engine (core logic)
-└── README.md                # This file
-
-~/.npu-dictation/            # Created at runtime
-├── config.json              # User configuration
-├── dictation.log            # Runtime logs
-├── venv/                    # Python virtual environment
-└── models/                  # Exported OpenVINO models
-    └── whisper-base-openvino/
-```
-
-## How This Uses Your NPU
-
-The Intel NPU (AI Boost) is a dedicated neural network accelerator designed for
-sustained AI workloads with low power consumption. Unlike the CPU/GPU which handle
-general computation, the NPU is optimized for matrix operations used in transformer
-models like Whisper.
-
-OpenVINO converts the Whisper model to INT8 precision and compiles it specifically
-for your NPU's architecture. The compiled model is cached, so subsequent loads are
-near-instant.
-
-Typical performance on Intel Core Ultra NPU:
-- **whisper-base**: ~3x real-time (10s audio → ~3s processing)
-- **whisper-small**: ~1.5x real-time (10s audio → ~7s processing)
-
-This means for typical Claude Code prompts (5-15 seconds of speech), you get
-transcription in 2-5 seconds — fast enough to feel natural.
 
 ## License
 
-MIT — do whatever you want with it.
+MIT

@@ -6,6 +6,9 @@ openvino-genai>=2025.1
 optimum[openvino]
 transformers
 
+# Parakeet TDT preprocessing
+onnxruntime>=1.18.1
+
 # Audio
 sounddevice
 numpy
@@ -13,6 +16,11 @@ numpy
 # Input/output
 keyboard
 pyperclip
+
+# GUI
+pystray>=0.19
+customtkinter>=5.2
+Pillow>=10.0
 
 # Testing
 pytest
