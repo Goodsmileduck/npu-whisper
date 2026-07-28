@@ -1,26 +1,40 @@
 # Core - OpenVINO inference
-openvino>=2025.1
-openvino-genai>=2025.1
+# Upper bound excludes the 2026.x line: optimum-intel 2.0.0 hard-requires
+# openvino>=2026.0, and OpenVINO's Whisper-on-NPU export/compile behavior has
+# moved across recent releases (see PR description) with an open unresolved
+# NPU compile report against 2026.x. Stay on the already-working 2025.x line
+# until someone validates 2026.x on real NPU hardware.
+openvino>=2025.1,<2026.0
+openvino-genai>=2025.1,<2026.0
 
 # Model export
-optimum[openvino]
-transformers
+# optimum-intel 2.0.0 forces openvino>=2026.0 (see above); cap below it so
+# resolution stays on the optimum-intel 1.x line that supports openvino 2025.x.
+optimum[openvino]>=1.23.0,<2.0.0
+# Upper bound matches optimum-intel 1.25.2's own declared window
+# (transformers<4.54,>=4.36). The originally-reported "transformers>=4.53
+# breaks Whisper export" claim did NOT reproduce here: transformers==4.53.0 +
+# optimum-intel==1.25.2 + openvino==2025.2.0 successfully exported
+# openai/whisper-tiny.en via `optimum-cli export openvino` in this
+# verification (see PR description). Bound kept at <4.54 anyway to match the
+# tightest constraint optimum-intel itself declares for this line.
+transformers>=4.36,<4.54
 
 # Parakeet TDT preprocessing
-onnxruntime>=1.18.1
+onnxruntime>=1.18.1,<2.0.0
 
 # Audio
-sounddevice
-numpy
+sounddevice>=0.4.6,<0.6.0
+numpy>=1.24,<3.0
 
 # Input/output
-keyboard
-pyperclip
+keyboard>=0.13.5,<0.14.0
+pyperclip>=1.8.2,<1.9.0
 
 # GUI
-pystray>=0.19
-customtkinter>=5.2
-Pillow>=10.0
+pystray>=0.19,<0.20
+customtkinter>=5.2,<6.0
+Pillow>=10.0,<12.0
 
 # Testing
-pytest
+pytest>=7.0,<9.0
