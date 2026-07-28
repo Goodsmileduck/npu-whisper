@@ -10,7 +10,8 @@ import pytest
 from dictation_engine import (
     MODEL_REGISTRY, DictationApp, DEFAULT_CONFIG,
     create_model, ParakeetNPU, WhisperNPU,
-    LANGUAGES, get_models_for_language, is_model_downloaded, MODEL_DIR,
+    LANGUAGES, PARAKEET_UPSTREAM_LANGUAGES,
+    get_models_for_language, is_model_downloaded, MODEL_DIR,
 )
 
 
@@ -114,26 +115,90 @@ class TestLanguageFiltering:
         assert len(models) == len(MODEL_REGISTRY)
         assert "parakeet" in models
 
-    def test_non_english_excludes_parakeet(self):
-        for lang in ("ru", "es", "fr", "de", "ja", "zh"):
+    def test_non_european_excludes_parakeet(self):
+        # Parakeet's upstream checkpoint covers 25 European languages; the
+        # app also exposes ja/zh/ko/tr/ar which the checkpoint does not
+        # support, so those must stay excluded.
+        for lang in ("ja", "zh", "ko", "tr", "ar"):
             models = get_models_for_language(lang)
             assert "parakeet" not in models, f"parakeet should not be in {lang} models"
             assert "base" in models
             assert "small" in models
+
+    def test_non_english_includes_parakeet_for_supported_languages(self):
+        # Regression test for issue #2: Parakeet must be offered for at
+        # least one non-English language it actually supports.
+        for lang in ("ru", "es", "fr", "de", "pt", "it", "nl", "pl", "uk"):
+            models = get_models_for_language(lang)
+            assert "parakeet" in models, f"parakeet should be offered for {lang}"
 
     def test_whisper_models_support_all_languages(self):
         for name, info in MODEL_REGISTRY.items():
             if info["backend"] == "whisper":
                 assert info["languages"] == "all", f"{name} should support all languages"
 
-    def test_parakeet_english_only(self):
+    def test_parakeet_is_multilingual(self):
         info = MODEL_REGISTRY["parakeet"]
-        assert info["languages"] == ["en"]
+        assert isinstance(info["languages"], list)
+        assert "en" in info["languages"]
+        assert len(info["languages"]) > 1, "parakeet should no longer be English-only"
+
+    def test_parakeet_languages_subset_of_upstream_checkpoint(self):
+        info = MODEL_REGISTRY["parakeet"]
+        for lang in info["languages"]:
+            assert lang in PARAKEET_UPSTREAM_LANGUAGES, (
+                f"{lang} is declared for parakeet but the upstream checkpoint "
+                f"does not support it"
+            )
+
+    def test_parakeet_languages_selectable_in_ui(self):
+        # Regression test for issue #2: the registry must never declare a
+        # language the UI's LANGUAGES map (and therefore the model picker)
+        # cannot select.
+        info = MODEL_REGISTRY["parakeet"]
+        for lang in info["languages"]:
+            assert lang in LANGUAGES, (
+                f"{lang} is declared for parakeet but is not in LANGUAGES "
+                f"(the UI cannot select it)"
+            )
 
     def test_languages_dict_has_entries(self):
         assert len(LANGUAGES) >= 10
         assert "en" in LANGUAGES
         assert LANGUAGES["en"] == "English"
+
+
+class TestParakeetTdtConstants:
+    """Verify BLANK_IDX / VOCAB_SIZE are derived from the loaded vocab
+    rather than trusted blindly (issue #2)."""
+
+    def _bare_parakeet(self, tmp_path):
+        # Bypass __init__ (which loads onnxruntime/OpenVINO models) to unit
+        # test _load_vocab() in isolation.
+        instance = ParakeetNPU.__new__(ParakeetNPU)
+        instance.model_path = tmp_path
+        instance.vocab = {}
+        return instance
+
+    def test_derives_constants_matching_current_checkpoint_vocab(self, tmp_path):
+        # 8192 tokens (indices 0-8191) matches the shipped
+        # goodsmileduck/parakeet-tdt-0.6b-v3-onnx vocab.txt.
+        lines = [f"tok{i} {i}" for i in range(8192)]
+        (tmp_path / "vocab.txt").write_text("\n".join(lines), encoding="utf-8")
+        instance = self._bare_parakeet(tmp_path)
+        instance._load_vocab()
+        assert instance.BLANK_IDX == 8192
+        assert instance.VOCAB_SIZE == 8193
+
+    def test_derives_constants_for_a_different_sized_vocab(self, tmp_path):
+        # A hypothetical re-export with a smaller vocab must not silently
+        # keep using the old checkpoint's hardcoded constants.
+        lines = [f"tok{i} {i}" for i in range(100)]
+        (tmp_path / "vocab.txt").write_text("\n".join(lines), encoding="utf-8")
+        instance = self._bare_parakeet(tmp_path)
+        instance._load_vocab()
+        assert instance.BLANK_IDX == 100
+        assert instance.VOCAB_SIZE == 101
 
 
 class TestModelDownloadStatus:

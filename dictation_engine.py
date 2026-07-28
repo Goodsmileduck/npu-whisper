@@ -37,6 +37,34 @@ DEFAULT_CONFIG = {
     "show_balloon": True,      # Show text balloon under notch after transcription
 }
 
+# Supported languages (Whisper's top languages + display names)
+LANGUAGES = {
+    "en": "English",
+    "ru": "Russian",
+    "es": "Spanish",
+    "fr": "French",
+    "de": "German",
+    "ja": "Japanese",
+    "zh": "Chinese",
+    "ko": "Korean",
+    "pt": "Portuguese",
+    "it": "Italian",
+    "nl": "Dutch",
+    "pl": "Polish",
+    "tr": "Turkish",
+    "ar": "Arabic",
+    "uk": "Ukrainian",
+}
+
+# The 25 languages nvidia/parakeet-tdt-0.6b-v3 was trained on (automatic
+# language ID, no language token needed at inference). Source:
+# https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3 model card.
+PARAKEET_UPSTREAM_LANGUAGES = {
+    "bg", "hr", "cs", "da", "nl", "en", "et", "fi", "fr", "de", "el", "hu",
+    "it", "lv", "lt", "mt", "pl", "pt", "ro", "sk", "sl", "es", "sv", "ru",
+    "uk",
+}
+
 # Model registry: pre-exported models from HuggingFace
 MODEL_REGISTRY = {
     "base": {
@@ -78,31 +106,19 @@ MODEL_REGISTRY = {
     "parakeet": {
         "repo": "nvidia/parakeet-tdt-0.6b-v3",
         "ov_repo": "goodsmileduck/parakeet-tdt-0.6b-v3-onnx",
-        "description": "600M params, 3.7% WER. Best accuracy, hybrid NPU+CPU.",
+        "description": (
+            "600M params, 3.7% WER (LibriSpeech test-clean, publisher-reported). "
+            "Best accuracy, hybrid NPU+CPU. Multilingual with automatic language ID."
+        ),
         "preferred_device": "NPU",
         "backend": "parakeet",
         "local_dir": "parakeet-tdt-openvino",
-        "languages": ["en"],
+        # Intersection of the upstream checkpoint's 25 supported languages with
+        # the languages this app exposes in the UI (LANGUAGES below). Do not
+        # hand-edit this list; it is derived so it can never drift ahead of
+        # what the model picker can actually offer.
+        "languages": sorted(PARAKEET_UPSTREAM_LANGUAGES & LANGUAGES.keys()),
     },
-}
-
-# Supported languages (Whisper's top languages + display names)
-LANGUAGES = {
-    "en": "English",
-    "ru": "Russian",
-    "es": "Spanish",
-    "fr": "French",
-    "de": "German",
-    "ja": "Japanese",
-    "zh": "Chinese",
-    "ko": "Korean",
-    "pt": "Portuguese",
-    "it": "Italian",
-    "nl": "Dutch",
-    "pl": "Polish",
-    "tr": "Turkish",
-    "ar": "Arabic",
-    "uk": "Ukrainian",
 }
 
 
@@ -364,7 +380,12 @@ class ParakeetNPU:
         decoder_joint-model.onnx (OpenVINO GPU) → TDT greedy decode
     """
 
-    # TDT constants
+    # TDT constants. These are the expected values for the multilingual
+    # nvidia/parakeet-tdt-0.6b-v3 checkpoint's 8192-entry vocab (indices
+    # 0-8191) plus one blank token at index 8192. They are treated as
+    # defaults only: _load_vocab() derives the real values from the loaded
+    # vocab.txt and overrides these instance attributes if the checkpoint's
+    # vocab size ever differs (e.g. a future re-export).
     BLANK_IDX = 8192
     VOCAB_SIZE = 8193  # 0-8192 are vocab tokens, 8193+ are duration tokens
     MAX_TOKENS_PER_STEP = 10
@@ -395,6 +416,24 @@ class ParakeetNPU:
                     token, idx = parts[0], int(parts[1])
                     self.vocab[idx] = token.replace("\u2581", " ")
         log(f"Parakeet vocab loaded: {len(self.vocab)} tokens")
+
+        # Derive BLANK_IDX / VOCAB_SIZE from the loaded vocab instead of
+        # trusting the hardcoded class defaults blindly. The joint network
+        # emits logits laid out as [vocab tokens..., blank, duration bins...],
+        # so blank sits immediately after the highest real vocab index.
+        if self.vocab:
+            max_idx = max(self.vocab)
+            derived_blank = max_idx + 1
+            derived_vocab_size = max_idx + 2
+            if derived_blank != self.BLANK_IDX or derived_vocab_size != self.VOCAB_SIZE:
+                log(
+                    f"WARNING: TDT constants derived from vocab.txt (BLANK_IDX="
+                    f"{derived_blank}, VOCAB_SIZE={derived_vocab_size}) differ from "
+                    f"hardcoded defaults (BLANK_IDX={self.BLANK_IDX}, "
+                    f"VOCAB_SIZE={self.VOCAB_SIZE}); using derived values."
+                )
+            self.BLANK_IDX = derived_blank
+            self.VOCAB_SIZE = derived_vocab_size
 
     def _load_pipeline(self):
         """Load preprocessor, encoder, and decoder."""
@@ -558,7 +597,13 @@ class ParakeetNPU:
         """Transcribe audio numpy array to text.
 
         Same interface as WhisperNPU.transcribe() for drop-in compatibility.
-        Note: Parakeet is English-only; language parameter is accepted but ignored.
+        Note: Parakeet TDT performs automatic language identification and
+        does not take a language token at inference time (see the upstream
+        model card). The `language` parameter is accepted for interface
+        compatibility with WhisperNPU.transcribe() but is intentionally
+        unused here -- it is not silently dropped support, the model simply
+        has no language-conditioning input to plumb it into. Supported
+        languages are declared in MODEL_REGISTRY["parakeet"]["languages"].
         """
         import numpy as np
         start = time.time()

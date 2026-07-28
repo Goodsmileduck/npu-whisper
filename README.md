@@ -47,13 +47,15 @@ Press **Ctrl+Space** to start recording, press again to stop. Transcribed text i
 |-------|--------|--------|-------------------|-----|-----------|-------|
 | **base** | 74M | NPU | 0.2s | 5.0% | All 15 | Default, great for short commands |
 | **small** | 244M | NPU | 0.6s | 3.4% | All 15 | Balanced speed/accuracy |
-| **parakeet** | 600M | NPU+GPU | 0.2s | 3.7% | English only | Best English accuracy on NPU |
+| **parakeet** | 600M | NPU+GPU | 0.2s | 3.7% | en, es, fr, de, it, nl, pl, pt, ru, uk (10 of 15) | Best accuracy for its supported languages; automatic language ID, no manual selection needed |
 | **medium** | 769M | GPU | — | 2.9% | All 15 | High accuracy, slower |
 | **turbo** | 809M | GPU | 2.4s | 2.3% | All 15 | Best multilingual quality |
 
-> **WER** = Word Error Rate on LibriSpeech test-clean (lower is better). Whisper WER from [HuggingFace model cards](https://huggingface.co/openai/whisper-base); Parakeet from [NVIDIA](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3).
+> **WER** = Word Error Rate (lower is better), publisher-reported, not independently reproduced here. Whisper WER on LibriSpeech test-clean from [HuggingFace model cards](https://huggingface.co/openai/whisper-base). Parakeet WER (3.7% LibriSpeech test-clean, 17.0% FLEURS multilingual) from the [NVIDIA model card](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3).
 
-The Settings dialog shows which models are already downloaded and filters them by your selected language (e.g., selecting Russian hides the English-only Parakeet model).
+Parakeet's upstream checkpoint (`nvidia/parakeet-tdt-0.6b-v3`) supports 25 European languages with automatic language identification (no language token needed at inference). This app exposes the intersection of that list with its own 15-language picker: English, Spanish, French, German, Italian, Dutch, Polish, Portuguese, Russian, Ukrainian. It does not cover Japanese, Chinese, Korean, Turkish, or Arabic, which stay Whisper-only.
+
+The Settings dialog shows which models are already downloaded and filters them by your selected language (e.g., selecting Japanese hides Parakeet, since the checkpoint wasn't trained on it; selecting Russian now shows Parakeet).
 
 ## Usage
 
