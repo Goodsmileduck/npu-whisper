@@ -1,0 +1,17 @@
+# Unit-test dependencies. Keep shared version ranges aligned with pyproject.toml.
+# Inference and audio hardware are mocked: no OpenVINO, torch or model downloads.
+# onnxruntime is imported by patch targets in the Parakeet regression tests.
+pytest>=7.0,<9.0
+huggingface_hub
+requests
+psutil
+numpy>=1.24,<3.0
+onnxruntime>=1.18.1,<2.0.0
+sounddevice>=0.4.6,<0.6.0
+keyboard>=0.13.5,<0.14.0
+pyperclip>=1.8.2,<1.9.0
+pystray>=0.19,<0.20
+customtkinter>=5.2,<6.0
+Pillow>=10.0,<12.0
+num2words>=0.5.14,<0.6
+tomli>=2.0; python_version < '3.11'

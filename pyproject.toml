@@ -1,0 +1,108 @@
+[build-system]
+requires = ["hatchling>=1.24"]
+build-backend = "hatchling.build"
+
+[project]
+name = "debora-whisper"
+dynamic = ["version"]
+description = "Débora Whisper: local voice dictation for Windows on Intel NPU, Intel iGPU, NVIDIA RTX or CPU"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+authors = [{ name = "Alexandre Machado" }]
+keywords = ["whisper", "dictation", "speech-to-text", "openvino", "npu", "windows"]
+classifiers = [
+    "Environment :: Win32 (MS Windows)",
+    "Operating System :: Microsoft :: Windows :: Windows 11",
+    "Programming Language :: Python :: 3",
+    "Topic :: Multimedia :: Sound/Audio :: Speech",
+]
+# Runtime only. torch/optimum/transformers are never imported by the app
+# (models arrive pre-exported via huggingface_hub); they live in [export].
+dependencies = [
+    # 2026.4 validated on real hardware (Intel AI Boost NPU, driver
+    # 32.0.100.5540; Arc iGPU; CPU) with the official
+    # OpenVINO/whisper-large-v3-turbo-int8-ov export. 2026 rejects the legacy
+    # FluidInference int4 stateful decoder; models must be the current
+    # single-decoder exports. openvino-genai pins openvino-tokenizers.
+    "openvino>=2026.4,<2027.0",
+    "openvino-genai>=2026.4,<2027.0",
+    "huggingface_hub",
+    # Parakeet TDT preprocessing and Silero VAD
+    "onnxruntime>=1.18.1,<2.0.0",
+    "sounddevice>=0.4.6,<0.6.0",
+    "numpy>=1.24,<3.0",
+    "keyboard>=0.13.5,<0.14.0",
+    # The keyboard package needs root on Linux: there evdev reads /dev/input
+    # and writes /dev/uinput instead (user in the "input" group, see README).
+    "evdev>=1.7,<2.0; sys_platform == 'linux'",
+    # Session D-Bus (pure Python): the KDE window in focus, from KWin.
+    "jeepney>=0.8,<1.0; sys_platform == 'linux'",
+    "pyperclip>=1.8.2,<1.9.0",
+    "comtypes>=1.4,<2; sys_platform == 'win32'",
+    "psutil",
+    "pystray>=0.19,<0.20",
+    "customtkinter>=5.2,<6.0",
+    "Pillow>=10.0,<12.0",
+    # Voice chat: numbers spelled out for the TTS, which reads digits badly.
+    "num2words>=0.5.14,<0.6",
+    "tomli>=2.0; python_version < '3.11'",
+]
+
+[project.optional-dependencies]
+# NVIDIA RTX backend. The CUDA runtime DLLs come from PyPI (~2 GB), which is
+# why this is opt-in; the app falls back along device_priority without it.
+cuda = [
+    "faster-whisper>=1.0.0",
+    # Every tokenizers >=0.14 caps huggingface_hub <2.0. Left alone, uv takes
+    # hub 2.x and backtracks to tokenizers 0.13.3, which has no wheel for
+    # current Pythons and needs a Rust toolchain to build.
+    "tokenizers>=0.14",
+    "nvidia-cublas-cu12",
+    "nvidia-cudnn-cu12",
+]
+# Custom model export (`optimum-cli export openvino`). Not needed to run.
+export = [
+    # optimum's "openvino" extra has no upper bound on optimum-intel, and
+    # optimum-intel 2.x changes the transformers window: cap it directly.
+    # 1.25.2 + openvino 2026.4.1 passes `pip check`.
+    "optimum[openvino]>=1.23.0,<2.0.0",
+    "optimum-intel>=1.25,<2.0",
+    # Matches optimum-intel 1.25.2's declared window (transformers<4.54).
+    "transformers>=4.36,<4.54",
+    # Floored on security grounds: torch<2.6 has CVE-2025-32434 and torch<2.10
+    # CVE-2026-24747 (RCE via torch.load, the path optimum-cli export takes on
+    # arbitrary HF repos). Known trade-off: optimum's ONNX exporter imports
+    # `_attention_scale` from torch.onnx.symbolic_opset14, which torch>=2.10
+    # removed, so custom exports fail until optimum fixes it upstream. Do not
+    # lower this floor to "fix" the exporter without re-opening both CVEs.
+    "torch>=2.10",
+]
+test = [
+    "pytest>=7.0,<9.0",
+]
+
+# Both are console launchers: the app logs to stdout and quits on Ctrl+C.
+# A console-less (pythonw) launcher needs stdout/stderr redirected first.
+[project.scripts]
+debora = "debora_whisper.app:main"
+debora-cli = "debora_whisper.dictation_engine:main"
+
+[project.urls]
+Homepage = "https://github.com/alexandre-machado/debora-whisper"
+Issues = "https://github.com/alexandre-machado/debora-whisper/issues"
+
+[tool.hatch.version]
+path = "debora_whisper/__init__.py"
+
+[tool.hatch.build.targets.sdist]
+include = ["debora_whisper", "tests", "README.md", "pyproject.toml"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["debora_whisper"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"debora_whisper/harness_prompt.md" = "debora_whisper/harness_prompt.md"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

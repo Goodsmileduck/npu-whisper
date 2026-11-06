@@ -1,10 +1,10 @@
-﻿<#
+<#
 .SYNOPSIS
-    NPU Dictation Engine - PowerShell Launcher
-    Local voice-to-text powered by Intel NPU via OpenVINO + Whisper
+    Debora Whisper - PowerShell Launcher
+    Local voice-to-text on Intel NPU, GPU, NVIDIA CUDA or CPU
 
 .DESCRIPTION
-    Runs a local dictation app that uses your Intel NPU to transcribe speech.
+    Runs a local dictation app that transcribes speech on your own hardware.
     Press Ctrl+Alt+D (configurable) to toggle recording.
     Transcribed text is typed into the active window.
 
@@ -28,21 +28,32 @@
 param(
     [switch]$Setup,
     [switch]$CLI,
-    [ValidateSet("NPU", "GPU", "CPU")]
+    [ValidateSet("NPU", "GPU", "CPU", "CUDA")]
     [string]$Device,
     [ValidateSet("base", "small", "medium", "turbo", "parakeet")]
     [string]$Model,
     [string]$Language,
     [switch]$AutoEnter,
     [string]$Hotkey,
+    [switch]$Continuous,
     [switch]$Help
 )
 
 $ErrorActionPreference = "Stop"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$EnginePath = Join-Path $ScriptDir "dictation_engine.py"
-$AppPath = Join-Path $ScriptDir "app.py"
-$VenvDir = Join-Path (Join-Path $env:USERPROFILE ".npu-dictation") "venv"
+$PyProjectPath = Join-Path $ScriptDir "pyproject.toml"
+# `python -m debora_whisper` must resolve to this checkout even from another cwd,
+# a venv created before the package layout, or the system-Python fallback.
+$env:PYTHONPATH = if ($env:PYTHONPATH) { "$ScriptDir;$env:PYTHONPATH" } else { $ScriptDir }
+$AppDir = Join-Path $env:USERPROFILE ".debora"
+# Before the rename to Debora Whisper the folder was ~/.npu-dictation. Move it
+# here, before the venv check; the app moves it too, but only once it runs.
+$LegacyAppDir = Join-Path $env:USERPROFILE ".npu-dictation"
+if ((Test-Path $LegacyAppDir) -and -not (Test-Path $AppDir)) {
+    try { Move-Item -LiteralPath $LegacyAppDir -Destination $AppDir }
+    catch { $AppDir = $LegacyAppDir }  # in use by an older copy of the app
+}
+$VenvDir = Join-Path $AppDir "venv"
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -50,8 +61,8 @@ $VenvDir = Join-Path (Join-Path $env:USERPROFILE ".npu-dictation") "venv"
 function Write-Banner {
     Write-Host ""
     Write-Host "  ╔══════════════════════════════════════╗" -ForegroundColor Cyan
-    Write-Host "  ║   NPU Dictation Engine               ║" -ForegroundColor Cyan
-    Write-Host "  ║   Local Whisper on Intel NPU         ║" -ForegroundColor Cyan
+    Write-Host "  ║   Debora Whisper                     ║" -ForegroundColor Cyan
+    Write-Host "  ║   Local voice dictation              ║" -ForegroundColor Cyan
     Write-Host "  ╚══════════════════════════════════════╝" -ForegroundColor Cyan
     Write-Host ""
 }
@@ -152,18 +163,39 @@ function Invoke-Setup {
     
     $venvPython = Join-Path (Join-Path $VenvDir "Scripts") "python.exe"
 
-    # 3. Check NPU
+    # 3. Install project dependencies
     Write-Host ""
-    Write-Host "Step 3: Checking Intel NPU..." -ForegroundColor Yellow
+    Write-Host "Step 3: Installing debora-whisper and its dependencies..." -ForegroundColor Yellow
+    if (-not (Test-Path $PyProjectPath)) {
+        Write-Host "  ERROR: pyproject.toml not found at $PyProjectPath" -ForegroundColor Red
+        exit 1
+    }
+    & $venvPython -m pip install --upgrade pip
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "  ERROR: Failed to upgrade pip." -ForegroundColor Red
+        exit 1
+    }
+    # Editable install from this checkout, with the RTX (CUDA) and model
+    # export extras, so the launcher always runs the code next to it.
+    & $venvPython -m pip install -e "${ScriptDir}[cuda,export]"
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "  ERROR: Failed to install Python dependencies." -ForegroundColor Red
+        exit 1
+    }
+    Write-Host "  Dependencies installed." -ForegroundColor Green
+
+    # 4. Check NPU
+    Write-Host ""
+    Write-Host "Step 4: Checking Intel NPU..." -ForegroundColor Yellow
     $hasNPU = Test-NPUDriver
 
-    # 4. Run Python setup
+    # 5. Run Python setup
     Write-Host ""
-    Write-Host 'Step 4: Installing Python dependencies and exporting model...' -ForegroundColor Yellow
+    Write-Host 'Step 5: Exporting model and warming the OpenVINO cache...' -ForegroundColor Yellow
     Write-Host "  This will take several minutes on first run." -ForegroundColor Yellow
     Write-Host ""
     
-    & $venvPython $EnginePath --setup
+    & $venvPython -m debora_whisper.dictation_engine --setup
 
     Write-Host ""
     Write-Host "Setup complete! Start dictating with:" -ForegroundColor Green
@@ -189,16 +221,10 @@ function Start-Dictation {
     if ($Language)  { $engineArgs += "--language", $Language }
     if ($AutoEnter) { $engineArgs += "--auto-enter" }
     if ($Hotkey)    { $engineArgs += "--hotkey", $Hotkey }
-
-    # Check if engine file exists
-    if (-not (Test-Path $EnginePath)) {
-        Write-Host "ERROR: dictation_engine.py not found at $EnginePath" -ForegroundColor Red
-        Write-Host "Make sure both files are in the same directory." -ForegroundColor Yellow
-        exit 1
-    }
+    if ($Continuous){ $engineArgs += "--continuous" }
 
     # Check if model is set up
-    $configFile = Join-Path (Join-Path $env:USERPROFILE ".npu-dictation") "config.json"
+    $configFile = Join-Path $AppDir "config.json"
     if (-not (Test-Path $configFile)) {
         Write-Host "First-time setup required. Running setup..." -ForegroundColor Yellow
         Write-Host ""
@@ -216,9 +242,9 @@ function Start-Dictation {
 
     # Launch engine: GUI mode by default, -CLI for console-only mode
     if ($CLI) {
-        & $python $EnginePath @engineArgs
+        & $python -m debora_whisper.dictation_engine @engineArgs
     } else {
-        & $python $AppPath @engineArgs
+        & $python -m debora_whisper @engineArgs
     }
 }
 

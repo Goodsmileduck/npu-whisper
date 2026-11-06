@@ -6,7 +6,14 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
-from dictation_engine import AppState, DictationApp, DEFAULT_CONFIG
+from debora_whisper.dictation_engine import AppState, DictationApp, DEFAULT_CONFIG
+
+
+@pytest.fixture(autouse=True)
+def isolate_desktop():
+    """Tests must not inspect real keys or paste into the user's desktop."""
+    with patch('keyboard.is_pressed', return_value=False), patch('debora_whisper.dictation_engine.type_text'):
+        yield
 
 
 class TestAppState:
@@ -74,11 +81,21 @@ class TestStateTransitions:
         config = {**DEFAULT_CONFIG, "beep_on_start": False}
         app = DictationApp(config)
         app.whisper = MagicMock()  # Skip real model loading
+        app.recorder = MagicMock()
+        app.recorder.stop.return_value = np.zeros(16000, dtype=np.float32)
+        app.recorder.telemetry = {'live_frames': 16000}
 
         states = []
         app.add_callback(lambda s, d: states.append(s))
 
-        app._load_model_background()
+        # Only the loader's waits return at once: the resource monitor shares
+        # the event, and spinning it ran telemetry (an OpenVINO Core) in a
+        # tight loop beside the loader, which crashed the process on Linux.
+        real_wait = app._stopping.wait
+        loader = threading.current_thread()
+        with patch.object(app._stopping, 'wait', side_effect=lambda timeout=None: (
+                False if threading.current_thread() is loader else real_wait(timeout))):
+            app._load_model_background()
 
         assert AppState.LOADING in states
         assert states[-1] == AppState.READY
@@ -86,6 +103,7 @@ class TestStateTransitions:
     def test_load_model_error_transitions_to_error(self):
         config = {**DEFAULT_CONFIG, "beep_on_start": False}
         app = DictationApp(config)
+        app.recorder = MagicMock()
 
         states = []
         app.add_callback(lambda s, d: states.append(s))
@@ -98,25 +116,33 @@ class TestStateTransitions:
         assert states[-1] == AppState.ERROR
 
     def test_recording_state_transitions(self):
-        config = {**DEFAULT_CONFIG, "beep_on_start": False}
+        # A tap that starts a recording the next tap stops.
+        config = {**DEFAULT_CONFIG, "beep_on_start": False, "tap_action": "toggle"}
         app = DictationApp(config)
         app.whisper = MagicMock()
         app.whisper.transcribe = MagicMock(return_value="hello world")
         app._model_ready.set()
+        app.recorder = MagicMock()
 
         states = []
         app.add_callback(lambda s, d: states.append(s))
 
-        # Start recording
-        with patch("dictation_engine.AudioRecorder.start"):
-            app.toggle_recording()
+        # Wait for the worker rather than assuming thread scheduling order.
+        recording = threading.Event()
+        app.add_callback(lambda s, d: recording.set() if s == AppState.RECORDING else None)
+        app.toggle_recording()
+        assert recording.wait(1)
         assert AppState.RECORDING in states
+        deadline = time.monotonic() + 1
+        while app._hotkey_held and time.monotonic() < deadline:
+            time.sleep(0.001)
+        assert not app._hotkey_held
 
         # Stop recording — should go to PROCESSING then READY
         app.recorder = MagicMock()
         app.recorder.stop = MagicMock(return_value=np.zeros(16000, dtype=np.float32))
 
-        with patch("dictation_engine.type_text"):
+        with patch("debora_whisper.dictation_engine.type_text"):
             app.toggle_recording()
 
         # Wait for transcription thread
@@ -140,7 +166,7 @@ class TestHistory:
         app.recorder = MagicMock()
         app.recorder.stop = MagicMock(return_value=np.zeros(16000, dtype=np.float32))
 
-        with patch("dictation_engine.type_text"):
+        with patch("debora_whisper.dictation_engine.type_text"):
             app.toggle_recording()
 
         time.sleep(0.5)
@@ -208,6 +234,19 @@ class TestListInputDevices:
         assert devices[1] == {"index": 2, "name": "Mic 2"}
 
     def test_list_input_devices_handles_import_error(self):
-        with patch("dictation_engine.DictationApp.list_input_devices", return_value=[]):
+        with patch("debora_whisper.dictation_engine.DictationApp.list_input_devices", return_value=[]):
             devices = DictationApp.list_input_devices()
         assert devices == []
+
+
+def test_user_voice_is_reported_once_per_change():
+    from debora_whisper.dictation_engine import AudioRecorder
+    recorder = AudioRecorder.__new__(AudioRecorder)
+    recorder._voice_shown = False
+    events = []
+    recorder.on_voice = events.append
+    for active in (True, True, False, False, True):
+        recorder._show_voice(active)
+    assert events == [True, False, True]
+    recorder.on_voice = lambda active: 1 / 0  # a broken UI never breaks the VAD
+    recorder._show_voice(False)

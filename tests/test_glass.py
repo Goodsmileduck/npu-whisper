@@ -6,7 +6,7 @@ from PIL import Image
 
 import pytest
 
-from ui.glass import (
+from debora_whisper.ui.glass import (
     TRANSPARENT_RGB, PillCache, apply_acrylic, composite_on_transparent,
     render_dot, render_icon_mic, render_icon_stop, render_pill,
     render_waveform, render_button, _hex_to_rgba,

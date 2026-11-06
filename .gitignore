@@ -6,6 +6,7 @@ __pycache__/
 dist/
 build/
 *.egg
+.test-results/
 
 # Virtual environment
 venv/
@@ -22,7 +23,7 @@ env/
 .DS_Store
 Thumbs.db
 
-# Project runtime files (created in ~/.npu-dictation/)
+# Project runtime files (created in ~/.debora/)
 *.log
 models/
 config.json
@@ -39,3 +40,9 @@ nul
 
 # Git worktrees
 .worktrees/
+
+# Voice samples for TTS cloning: personal recordings, never committed
+samples/
+
+# Workspace-local pytest scratch files (including mock audio).
+.test-tmp/

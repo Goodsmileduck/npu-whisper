@@ -4,7 +4,7 @@ import time
 import numpy as np
 import pytest
 
-from dictation_engine import AudioRecorder
+from debora_whisper.dictation_engine import AudioRecorder
 
 
 class TestAudioRecorderThreadSafety:
@@ -28,9 +28,19 @@ class TestAudioRecorderTimeout:
 
     def test_max_record_seconds_stops_recording(self):
         """Recording should auto-stop after max_record_seconds."""
-        recorder = AudioRecorder(sample_rate=16000, max_record_seconds=1)
-        assert hasattr(recorder, 'max_record_seconds')
-        assert recorder.max_record_seconds == 1
+        expired = threading.Event()
+        recorder = AudioRecorder(sample_rate=16000, max_record_seconds=0.05,
+                                 on_timeout=lambda generation: expired.set())
+        recorder.start()
+        expected = np.arange(100, dtype=np.float32).reshape(-1, 1)
+        with recorder._lock:
+            recorder._frames.append(expected)
+        try:
+            assert expired.wait(2), 'Recording timer did not fire'
+            assert not recorder.recording
+            np.testing.assert_array_equal(recorder.stop(), expected.flatten())
+        finally:
+            recorder.close()
 
     def test_default_max_record_seconds_is_none(self):
         """Default recorder has no timeout."""

@@ -1,0 +1,111 @@
+name: Tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: Windows / Python ${{ matrix.python-version }}
+    runs-on: windows-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - python-version: '3.10'
+            hub-version: '==0.36.2'
+          - python-version: '3.12'
+            hub-version: '>=1'
+          - python-version: '3.14'
+            hub-version: '>=1'
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: requirements-test.txt
+
+      - name: Install test dependencies
+        run: python -m pip install -r requirements-test.txt "huggingface_hub${{ matrix.hub-version }}"
+
+      - name: Check dependency compatibility
+        run: python -m pip check
+
+      - name: Run tests
+        run: python -m pytest tests/ -q --junitxml=.test-results/pytest.xml
+
+      - name: Upload test report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: test-results-windows-python-${{ matrix.python-version }}
+          path: .test-results/pytest.xml
+          if-no-files-found: ignore
+          retention-days: 14
+
+  package:
+    # Builds the wheel and installs it the way users do (uv tool install), so
+    # a missing runtime dependency or a broken entry point fails the PR.
+    # The app is Windows-only (global hotkeys, Win32 overlay); Ubuntu checks
+    # that the package resolves and its entry points import off Windows.
+    name: Package / uv tool install / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    env:
+      # uv's own Python builds ship tkinter; Ubuntu's system python3 does not.
+      UV_PYTHON_PREFERENCE: only-managed
+    steps:
+      - name: Check out source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false  # uv build runs build-backend code
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+
+      - name: Build wheel and sdist
+        run: uv build
+
+      - name: Install the wheel as a tool
+        shell: pwsh
+        run: uv tool install --python 3.12 (Get-ChildItem dist/*.whl).FullName
+
+      - name: Resolve the cuda and export extras
+        # Resolution only: installing them pulls ~2 GB of CUDA/torch wheels.
+        run: uv pip compile pyproject.toml --python-version 3.12 --extra cuda --extra export --quiet -o resolved.txt
+
+      - name: The cuda extra resolves to prebuilt wheels
+        # Resolve `debora-whisper[cuda]` as a user's install would (without
+        # [export], whose transformers cap hides the problem), then require
+        # wheels for exactly those versions: a backtrack to sdist-only
+        # tokenizers 0.13.3 (needs Rust) broke installs before.
+        run: |
+          uv pip compile pyproject.toml --python-version 3.12 --python-platform windows --extra cuda --quiet -o resolved-cuda.txt
+          uv pip compile resolved-cuda.txt --python-version 3.12 --python-platform windows --only-binary tokenizers --only-binary ctranslate2 --quiet -o resolved-cuda-wheels.txt
+
+      - name: Smoke test the commands
+        shell: pwsh
+        run: |
+          debora-cli --help
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          # pystray connects to X at import time; Linux runners have no display.
+          if ($IsLinux) { xvfb-run -a debora --help } else { debora --help }
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
