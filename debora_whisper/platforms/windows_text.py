@@ -3,6 +3,7 @@
 Native APIs are imported only in the Windows helpers. Platform reuses the
 keyboard path with no-op native fallbacks when support is unknown.
 """
+import sys
 import threading
 import time
 import unicodedata
@@ -135,6 +136,88 @@ def _delete_text_ctypes(count: int):
 
 _clipboard_lock = threading.Lock()
 
+# Formats that make Windows skip a clipboard write: Win+V history, cloud
+# sync and clipboard monitors. They must land in the same clipboard
+# transaction as the text, or the history service may record it first.
+_PRIVATE_FORMATS = (
+    ("ExcludeClipboardContentFromMonitorProcessing", 1),
+    ("CanIncludeInClipboardHistory", 0),
+    ("CanUploadToCloudClipboard", 0),
+)
+
+
+def _copy_private(text: str) -> bool:
+    """Put `text` on the clipboard without leaving a trace in Win+V history.
+
+    Dictation pastes (drafts, finals, the restore of the user's own clipboard)
+    are plumbing, not something the user copied. Returns False if the native
+    path is unavailable or failed, so the caller can use plain pyperclip.
+    """
+    if sys.platform != "win32":
+        return False
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        user32 = ctypes.WinDLL("user32", use_last_error=True)
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        user32.OpenClipboard.argtypes = [wintypes.HWND]
+        user32.OpenClipboard.restype = wintypes.BOOL
+        user32.CloseClipboard.restype = wintypes.BOOL
+        user32.EmptyClipboard.restype = wintypes.BOOL
+        user32.RegisterClipboardFormatW.argtypes = [wintypes.LPCWSTR]
+        user32.RegisterClipboardFormatW.restype = wintypes.UINT
+        user32.SetClipboardData.argtypes = [wintypes.UINT, wintypes.HANDLE]
+        user32.SetClipboardData.restype = wintypes.HANDLE
+        kernel32.GlobalAlloc.argtypes = [wintypes.UINT, ctypes.c_size_t]
+        kernel32.GlobalAlloc.restype = wintypes.HGLOBAL
+        kernel32.GlobalLock.argtypes = [wintypes.HGLOBAL]
+        kernel32.GlobalLock.restype = wintypes.LPVOID
+        kernel32.GlobalUnlock.argtypes = [wintypes.HGLOBAL]
+        kernel32.GlobalFree.argtypes = [wintypes.HGLOBAL]
+
+        def put(fmt: int, data: bytes) -> bool:
+            handle = kernel32.GlobalAlloc(0x0002, len(data))  # GMEM_MOVEABLE
+            if not handle:
+                return False
+            ptr = kernel32.GlobalLock(handle)
+            if not ptr:
+                kernel32.GlobalFree(handle)
+                return False
+            ctypes.memmove(ptr, data, len(data))
+            kernel32.GlobalUnlock(handle)
+            if user32.SetClipboardData(fmt, handle):
+                return True  # the clipboard owns the memory now
+            kernel32.GlobalFree(handle)
+            return False
+
+        for _ in range(20):  # another process may hold the clipboard briefly
+            if user32.OpenClipboard(None):
+                break
+            time.sleep(0.01)
+        else:
+            return False
+        try:
+            if not user32.EmptyClipboard():
+                return False
+            CF_UNICODETEXT = 13
+            if not put(CF_UNICODETEXT, text.encode("utf-16-le") + b"\0\0"):
+                return False
+            for name, value in _PRIVATE_FORMATS:
+                fmt = user32.RegisterClipboardFormatW(name)
+                if fmt:
+                    put(fmt, value.to_bytes(4, "little"))
+            return True
+        finally:
+            user32.CloseClipboard()
+    except Exception:
+        return False
+
+
+def _copy(pyperclip, text: str):
+    if not _copy_private(text):
+        pyperclip.copy(text)
+
 
 def type_text(text: str, auto_enter: bool = False, *, fallback=None):
     """Type text into the currently active window using keyboard simulation."""
@@ -156,7 +239,7 @@ def type_text(text: str, auto_enter: bool = False, *, fallback=None):
             except Exception:
                 old_clipboard = None
 
-            pyperclip.copy(text)
+            _copy(pyperclip, text)
             try:
                 time.sleep(0.05)
                 keyboard.press_and_release("ctrl+v")
@@ -168,7 +251,7 @@ def type_text(text: str, auto_enter: bool = False, *, fallback=None):
                 try:
                     # Don't overwrite something the user copied meanwhile.
                     if old_clipboard is not None and pyperclip.paste() == text:
-                        pyperclip.copy(old_clipboard)
+                        _copy(pyperclip, old_clipboard)
                 except Exception:
                     pass
 

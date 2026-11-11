@@ -50,6 +50,16 @@ def _private_last_recording(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _no_real_clipboard(request, monkeypatch):
+    """Dictation tests model the clipboard through pyperclip mocks; the native
+    private-copy path must never overwrite the developer's real clipboard."""
+    if request.module.__name__.endswith("test_windows_clipboard"):
+        return
+    from debora_whisper.platforms import windows_text
+    monkeypatch.setattr(windows_text, "_copy_private", lambda text: False)
+
+
+@pytest.fixture(autouse=True)
 def _private_silero_model(tmp_path, monkeypatch):
     """Never use the operator's cached VAD, even if MODEL_DIR is rebound.
 
