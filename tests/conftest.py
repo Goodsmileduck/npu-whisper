@@ -60,6 +60,20 @@ def _no_real_clipboard(request, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _no_real_focus_or_clipboard(monkeypatch):
+    """Tests run without a reliable foreground window: assume a text field has
+    the focus, and never let "could not type it" overwrite the developer's
+    real clipboard."""
+    from debora_whisper import dictation_engine as engine
+    monkeypatch.setattr(engine, "has_text_target", lambda target: True)
+    try:
+        import pyperclip
+    except ImportError:
+        return
+    monkeypatch.setattr(pyperclip, "copy", lambda text: None)
+
+
+@pytest.fixture(autouse=True)
 def _private_silero_model(tmp_path, monkeypatch):
     """Never use the operator's cached VAD, even if MODEL_DIR is rebound.
 

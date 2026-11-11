@@ -96,6 +96,9 @@ class WindowsPlatform(Platform):
     def input_target(self):
         return windows_text.input_target()
 
+    def has_text_target(self, target) -> bool:
+        return windows_text.has_text_target(target)
+
     def text_before_caret(self, count: int) -> str | CaretReadStatus | None:
         return windows_uia.text_before_caret(count)
 

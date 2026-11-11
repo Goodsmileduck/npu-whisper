@@ -158,7 +158,7 @@ def test_ptt_final_reuses_typed_draft(screen, draft, final, tail, deleted):
     assert app.history[-1]["text"] == final
 
 
-def test_ptt_final_after_focus_change_stays_in_history(screen):
+def test_ptt_final_after_focus_change_stays_in_history(screen, copied):
     app = _app(continuous_listening=False)
     _say(app, "Primeira parte", is_final=False)
     screen.target = ("other window", "field")
@@ -168,6 +168,7 @@ def test_ptt_final_after_focus_change_stays_in_history(screen):
     assert screen.text == "Texto do usuário"
     assert screen.pasted == []
     assert app._history[-1]["text"] == "Primeira parte."
+    assert copied == ["Primeira parte."]
 
 
 def test_ptt_voice_chat_final_types_nothing(screen):
@@ -1187,3 +1188,42 @@ def test_failed_paste_restores_clipboard_and_releases_lock(clipboard):
     assert clipboard["text"] == "user clipboard"
     assert de._clipboard_lock.acquire(blocking=False)
     de._clipboard_lock.release()
+
+@pytest.fixture
+def copied():
+    """Texts left on the clipboard because they could not be typed."""
+    texts = []
+    with patch.object(de, "copy_to_clipboard", side_effect=lambda t: texts.append(t) or True):
+        yield texts
+
+
+def test_final_without_a_focused_window_goes_to_the_clipboard(screen, copied):
+    app = _app(continuous_listening=False, auto_enter=True)
+    screen.target = None
+    with patch.object(de, "has_text_target", return_value=False):
+        _say(app, "Sem campo.", is_final=True, ptt=True)
+    assert screen.pasted == [] and screen.enters == 0
+    assert copied == ["Sem campo."]
+    assert app._history[-1]["text"] == "Sem campo."
+
+
+def test_drafts_are_not_pasted_without_a_target(screen, copied):
+    app = _app(continuous_listening=False)
+    with patch.object(de, "has_text_target", return_value=False):
+        _say(app, "Rascunho", is_final=False)
+    assert screen.drafted == [] and copied == []
+
+
+def test_final_with_a_target_is_pasted_not_copied(screen, copied):
+    app = _app(continuous_listening=False)
+    _say(app, "Tudo certo.", is_final=True, ptt=True)
+    assert screen.pasted == ["Tudo certo. "]
+    assert copied == []
+
+
+def test_copy_to_clipboard_reports_failure(monkeypatch):
+    import pyperclip
+    monkeypatch.setattr(pyperclip, "copy", MagicMock(side_effect=RuntimeError("busy")))
+    assert de.copy_to_clipboard("x") is False
+    monkeypatch.setattr(pyperclip, "copy", MagicMock())
+    assert de.copy_to_clipboard("x") is True

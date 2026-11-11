@@ -57,6 +57,24 @@ def same_input_target(a, b) -> bool:
     return a[1] is None or b[1] is None or a[1] == b[1]
 
 
+def has_text_target(target) -> bool:
+    """False when no window has the focus, or it is one of Débora's own.
+
+    Ctrl+V would go nowhere (or into Débora's settings), so the text stays on
+    the clipboard instead.
+    """
+    if target is None:
+        return False
+    try:
+        import ctypes
+        import os
+        pid = ctypes.c_ulong(0)
+        ctypes.windll.user32.GetWindowThreadProcessId(target[0], ctypes.byref(pid))
+        return pid.value != os.getpid()
+    except Exception:
+        return True
+
+
 def type_draft(text: str):
     """Paste live drafts through the same serialized path as final text."""
     type_text(text)

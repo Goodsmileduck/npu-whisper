@@ -21,8 +21,12 @@ class TrayManager:
 
     def __init__(self, on_toggle, on_quit, on_settings=None, on_history=None, on_hardware_event=None,
                  device="NPU", model="base", hotkey="ctrl+alt+d",
-                 on_voice_chat=None, voice_chat_on=None):
+                 on_voice_chat=None, voice_chat_on=None,
+                 recent_texts=None, on_copy_text=None):
         self._on_toggle = on_toggle
+        # recent_texts() -> newest-first strings; on_copy_text(text) copies one.
+        self._recent_texts = recent_texts
+        self._on_copy_text = on_copy_text
         # on_voice_chat() switches voice chat; voice_chat_on() ticks the item.
         self._on_voice_chat = on_voice_chat
         self._voice_chat_on = voice_chat_on or (lambda: False)
@@ -70,6 +74,9 @@ class TrayManager:
                 "Voice chat", lambda: self._on_voice_chat(),
                 checked=lambda _: self._voice_chat_on()))
 
+        if self._recent_texts and self._on_copy_text:
+            items.append(pystray.MenuItem("Recent texts", pystray.Menu(self._recent_items)))
+
         if self._on_history:
             items.append(pystray.MenuItem("History", lambda: self._on_history()))
 
@@ -98,6 +105,34 @@ class TrayManager:
         ])
 
         return pystray.Menu(*items)
+
+    RECENT_COUNT = 5
+    RECENT_LABEL_CHARS = 60
+
+    def _recent_items(self):
+        """The submenu, rebuilt each time it opens; a click copies that text."""
+        try:
+            texts = list(self._recent_texts())[:self.RECENT_COUNT]
+        except Exception:
+            texts = []
+        if not texts:
+            yield pystray.MenuItem("(nothing yet)", None, enabled=False)
+            return
+        for text in texts:
+            yield pystray.MenuItem(self._recent_label(text), self._copier(text))
+
+    def _copier(self, text: str):
+        # pystray picks how to call an action from its exact argument count.
+        def copy(icon, item):
+            self._on_copy_text(text)
+        return copy
+
+    @classmethod
+    def _recent_label(cls, text: str) -> str:
+        label = " ".join(text.split())
+        if len(label) > cls.RECENT_LABEL_CHARS:
+            label = label[:cls.RECENT_LABEL_CHARS - 1].rstrip() + "…"
+        return label.replace("&", "&&")  # a lone & is a menu accelerator
 
     def _on_toggle_click(self, icon=None, item=None):
         self._on_toggle()

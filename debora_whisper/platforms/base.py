@@ -89,6 +89,14 @@ class Platform:
         """Where keys land is unknown on unsupported systems."""
         return None
 
+    def has_text_target(self, target) -> bool:
+        """Whether pasted keys can land anywhere, given `input_target()`.
+
+        Unknown (the default) counts as yes: only a platform that can tell
+        "nothing is focused" says no.
+        """
+        return True
+
     def text_before_caret(self, count: int) -> str | CaretReadStatus | None:
         """Text before the caret, UNSAFE for selections, or None if unavailable.
 

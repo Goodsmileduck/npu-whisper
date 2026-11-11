@@ -76,6 +76,8 @@ class GUIApp:
             hotkey=config["hotkey"],
             on_voice_chat=self._toggle_voice_chat,
             voice_chat_on=lambda: bool(self._config.get("voice_chat")),
+            recent_texts=self._recent_texts,
+            on_copy_text=self._copy_recent_text,
         )
 
         # Lazy-created windows
@@ -576,6 +578,20 @@ class GUIApp:
             self._settings_win.set_apply_enabled(enabled)
 
     # -- History -----------------------------------------------------------
+
+    def _recent_texts(self) -> list[str]:
+        """The last dictations, newest first (voice-chat echoes excluded)."""
+        engine = getattr(self, "_engine", None)
+        if engine is None:
+            return []
+        entries = [e for e in engine.history
+                   if e.get("text", "").strip()
+                   and e.get("voice_chat_status") not in ("echo", "ignored")]
+        return [e["text"].strip() for e in reversed(entries)][:5]
+
+    def _copy_recent_text(self, text: str):
+        from debora_whisper.dictation_engine import copy_to_clipboard
+        copy_to_clipboard(text)
 
     def _show_history(self):
         self._history_win = HistoryWindow(self._root, self._engine.history)

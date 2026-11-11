@@ -2420,6 +2420,27 @@ def same_input_target(a, b) -> bool:
     return platforms.current().same_input_target(a, b)
 
 
+def has_text_target(target) -> bool:
+    """Whether a paste has anywhere to go, given get_input_target()."""
+    return platforms.current().has_text_target(target)
+
+
+def copy_to_clipboard(text: str) -> bool:
+    """Leave `text` on the clipboard for the user to paste (and in Win+V).
+
+    Deliberately not the private copy used for dictation pastes: this is the
+    only copy of text that could not be typed, and nothing restores the
+    previous clipboard afterwards.
+    """
+    try:
+        import pyperclip
+        pyperclip.copy(text)
+        return True
+    except Exception as exc:
+        log(f"Could not copy the transcription to the clipboard: {exc}")
+        return False
+
+
 def type_draft_text(text: str):
     """Paste live drafts through the same serialized path as final text."""
     return platforms.current().type_draft(text)
@@ -3341,7 +3362,13 @@ class DictationApp:
 
                         if is_final:
                             if self._draft_final_suppressed:
-                                log("Inline draft: final kept in history; no duplicate pasted")
+                                # The draft stayed in a field that no longer has
+                                # the focus; the final text goes to the clipboard.
+                                copy_to_clipboard(text.strip())
+                                log("Inline draft: final copied to the clipboard; not pasted")
+                            elif not has_text_target(target):
+                                copy_to_clipboard(text.strip())
+                                log("No text field has the focus; final copied to the clipboard")
                             elif text_to_type:
                                 type_text(text_to_type, auto_enter=self.config["auto_enter"])
                             elif self.config["auto_enter"]:
@@ -3362,7 +3389,8 @@ class DictationApp:
                             })
                             if len(self._history) > self.MAX_HISTORY:
                                 self._history = self._history[-self.MAX_HISTORY:]
-                        elif self.config.get("inline_drafts") and not self._inline_drafts_abandoned:
+                        elif (self.config.get("inline_drafts") and not self._inline_drafts_abandoned
+                                and has_text_target(target)):
                             # Readability selects how to erase, not how to insert.
                             # Avoid the Unicode-packet path implicated in the
                             # Notepad report; serialize draft and final pastes.
