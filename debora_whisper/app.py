@@ -444,7 +444,8 @@ class GUIApp:
 
     # Settings that only take effect in a newly built engine.
     _REBUILD_KEYS = ("model_size", "device", "hotkey", "voice_chat_hotkey",
-                     "beep_on_start", "sample_rate", "max_record_seconds")
+                     "beep_on_start", "sample_rate", "max_record_seconds",
+                     "input_device")
 
     def _on_settings_apply(self, new_config: dict):
         try:

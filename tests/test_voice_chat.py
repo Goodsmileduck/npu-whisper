@@ -1958,7 +1958,7 @@ def test_settings_apply_rejects_invalid_session_name(name, monkeypatch):
         "_voice_chat_var": True, "_backend_var": "Claude Code",
         "_harness_new_session_var": True, "_harness_session_name_var": name,
         "_voice_var": "test", "_balloon_var": True, "_font_size_var": "16",
-        "_tts_engine_var": "Chatterbox (clones the voice)",
+        "_tts_engine_var": "Chatterbox (clones the voice)", "_mic_var": "System default",
     }.items():
         setattr(window, attr, MagicMock(get=MagicMock(return_value=value)))
     window._harness_cwd = None
