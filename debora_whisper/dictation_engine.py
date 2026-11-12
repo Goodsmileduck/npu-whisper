@@ -71,6 +71,7 @@ DEFAULT_CONFIG = {
     "beep_on_start": True,     # Audio feedback when recording starts/stops
     "max_record_seconds": 60,  # Max recording length
     "sample_rate": 16000,      # Whisper expects 16kHz
+    "input_device": None,      # Microphone name (Settings); null: the system default
     "show_balloon": True,      # Show conversation beside the mascot
     "balloon_width": None,     # Preferred text area width in logical px; null: default
     "continuous_listening": False, # Start in continuous (VAD) listening
@@ -390,6 +391,10 @@ def validate_config(config: dict):
     valid_models = set(MODEL_REGISTRY.keys())
     if config.get("model_size") not in valid_models:
         raise ValueError(f"model_size must be one of {valid_models}, got '{config.get('model_size')}'")
+
+    mic = config.get("input_device")
+    if mic is not None and (not isinstance(mic, str) or not mic.strip()):
+        raise ValueError(f"input_device must be null or a microphone name, got {mic!r}")
 
     sr = config.get("sample_rate")
     if not isinstance(sr, (int, float)) or sr <= 0:
@@ -1762,6 +1767,28 @@ def _log_audio_stream(sd, stream, direction):
         f"blocksize={stream.blocksize}")
 
 
+def resolve_input_device(name):
+    """Index of the input device called `name`, or None for the system default.
+
+    Windows lists one device per host API (MME, DirectSound, WASAPI), so the
+    same name repeats: prefer the default host API's entry. A missing device
+    (unplugged) falls back to the default instead of failing to record."""
+    if not name:
+        return None
+    try:
+        import sounddevice as sd
+        devices = sd.query_devices()
+        default_api = sd.default.hostapi
+        matches = [i for i, d in enumerate(devices)
+                   if d["max_input_channels"] > 0 and d["name"] == name]
+    except Exception:
+        return None
+    if not matches:
+        log(f"Microphone '{name}' not found; using the system default.")
+        return None
+    return next((i for i in matches if devices[i]["hostapi"] == default_api), matches[0])
+
+
 def silero_vad_model_path() -> Path:
     """Shared cache lookup for continuous listening and push-to-talk."""
     return MODEL_DIR / "silero_vad" / "silero_vad.onnx"
@@ -1962,6 +1989,7 @@ class AudioRecorder:
 
         try:
             self._stream = sd.InputStream(
+                device=resolve_input_device(self.config.get("input_device")),
                 samplerate=self.sample_rate,
                 channels=self.channels,
                 dtype="float32",

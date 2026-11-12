@@ -6,9 +6,9 @@ GPUs (faster-whisper), iGPU and CPU.
 
 ## Name rationale
 
-- **Débora** (Portuguese spelling, with the accent) comes from the Hebrew
-  *Devorah*, meaning **"bee"**. A bee buzzing softly at your ear fits a
-  dictation app called "Whisper".
+- **Débora** (Portuguese spelling, with the accent) is the name of the
+  assistant: a voice that speaks softly at your ear, which fits a dictation app
+  called "Whisper".
 - The biblical Deborah was a prophetess and judge remembered for the *Song of
   Deborah*: a figure known for her **voice**, which is what this project is about.
 - A personal name gives the app a personality (in the line of Alexa and Siri).
@@ -36,7 +36,7 @@ PyPI availability checked 2026-10-08: `debora-whisper`, `debora`,
 
 ## Visual direction (for the artwork)
 
-- **Mascot / icon: a bee.** It ties directly to the meaning of the name.
+- **Mascot / icon: a holographic tech fairy** (gold hair, cyan-blue glow, violet and gold accents).
 - The icon has to read at tray size (16–32 px) and at the overlay's
   "Dynamic Island" scale. Keep the silhouette simple and recognizable in
   monochrome.
@@ -60,9 +60,9 @@ PyPI availability checked 2026-10-08: `debora-whisper`, `debora`,
 
 This is the definitive prompt to generate the chosen version of the Débora mascot:
 
-> **Subject:** A digital holographic tech fairy/bee hybrid mascot.
-> **Pose & Body:** Tinkerbell's graceful, delicate flight silhouette and ethereal hovering posture. Delicate fairy/bee wings.
-> **Aesthetic:** Cortana from Halo. Glowing digital AI construct, scanlines, digital glitch artifacts, subtle hexagonal honeycomb mesh patterns across the construct, translucent wireframe elements.
+> **Subject:** A digital holographic tech fairy mascot.
+> **Pose & Body:** Tinkerbell's graceful, delicate flight silhouette and ethereal hovering posture. Delicate fairy wings.
+> **Aesthetic:** Cortana from Halo. Glowing digital AI construct, scanlines, digital glitch artifacts, subtle hexagonal mesh patterns across the construct, translucent wireframe elements.
 > **Palette:** Heavy emphasis on deep violet/purple bioluminescence, combined with liquid gold circuit traces, and electric cyan/blue neon data streams.
 
 
@@ -72,9 +72,9 @@ The overlay shows the mascot as a circle about 32 px wide, so it needs a
 head-and-shoulders bust, not the full flying figure. Colors follow Variant 02
 of `mascot_concept_matrix.jpg` (gold and cyan), not the violet emphasis above.
 
-> **Subject:** Head-and-shoulders bust portrait of the Débora mascot, a digital holographic tech fairy/bee hybrid, centered, facing slightly to the side with a calm, knowing half-smile.
-> **Features:** Golden hair in a high bun with a soft side fringe, pointed elfin ears, translucent cyan-blue holographic skin, the tips of delicate crystalline fairy/bee wings visible behind the shoulders.
-> **Aesthetic:** Cortana from Halo. Glowing digital AI construct, subtle scanlines, faint hexagonal honeycomb mesh, liquid gold circuit traces on the neck and collar of a gold bodysuit.
+> **Subject:** Head-and-shoulders bust portrait of the Débora mascot, a digital holographic tech fairy, centered, facing slightly to the side with a calm, knowing half-smile.
+> **Features:** Golden hair in a high bun with a soft side fringe, pointed elfin ears, translucent cyan-blue holographic skin, the tips of delicate crystalline fairy wings visible behind the shoulders.
+> **Aesthetic:** Cortana from Halo. Glowing digital AI construct, subtle scanlines, faint hexagonal mesh, liquid gold circuit traces on the neck and collar of a gold bodysuit.
 > **Palette:** Liquid gold and electric cyan neon as in Variant 02, with a hint of violet rim light.
 > **Composition:** Square 1:1, dark navy background, no text, generous margin around the head so it still reads when cropped to a circle at 32 px.
 
@@ -86,10 +86,10 @@ app ships a square 256 px crop of the current portrait
 
 This prompt extends the Official Mascot Prompt to create an entrance animation that seamlessly transitions into the idle hovering loop.
 
-> **Subject:** A digital holographic tech fairy/bee hybrid mascot named Débora.
+> **Subject:** A digital holographic tech fairy mascot named Débora.
 > **Action & Motion:** The animation MUST start with an empty, dark frame (the character is completely absent). Then, the mascot dynamically materializes/spawns into the center of the scene from thin air, constructing herself from swirling glowing data particles and a burst of bioluminescent light (like a hologram turning on). Once fully materialized, she settles smoothly into her signature ethereal hovering posture. The final hovering pose must hold perfectly stable with her wings fluttering rapidly, serving as a seamless match cut into her standard idle loop.
-> **Pose & Body:** Tinkerbell's graceful, delicate flight silhouette. Delicate fairy/bee wings.
-> **Aesthetic:** Cortana from Halo. Glowing digital AI construct, scanlines, digital glitch artifacts, subtle hexagonal honeycomb mesh patterns across the construct, translucent wireframe elements.
+> **Pose & Body:** Tinkerbell's graceful, delicate flight silhouette. Delicate fairy wings.
+> **Aesthetic:** Cortana from Halo. Glowing digital AI construct, scanlines, digital glitch artifacts, subtle hexagonal mesh patterns across the construct, translucent wireframe elements.
 > **Palette:** Heavy emphasis on deep violet/purple bioluminescence, combined with liquid gold circuit traces, and electric cyan/blue neon data streams.
 > **Lighting & Environment:** Clean dark navy/black background to isolate the character. High contrast, emphasizing her internal glow, neon rim lighting, and the holographic particle effects of her entrance.
 

@@ -46,7 +46,7 @@ def test_settings_apply_engine_and_voice(backend, label, voice, monkeypatch):
         "_voice_chat_var": True, "_backend_var": "Local (Qwen)",
         "_harness_new_session_var": True, "_harness_session_name_var": "Debora",
         "_voice_var": voice, "_balloon_var": True, "_font_size_var": "16",
-        "_tts_engine_var": label,
+        "_tts_engine_var": label, "_mic_var": "System default",
     }.items():
         setattr(window, attr, MagicMock(get=MagicMock(return_value=value)))
     window._harness_cwd = None

@@ -17,11 +17,11 @@ GLASS_HIGHLIGHT = (255, 255, 255, 15)
 
 # --- DWM Title Bar Color -----------------------------------------------------
 
-def set_title_bar_color(window, bg_hex, text_hex="#FFFFFF"):
+def set_title_bar_color(window, bg_hex, text_hex="#FFFFFF", dark=True):
     """Set Windows 11 title bar background and text colors via DWM.
 
-    Also enables immersive dark mode so window controls (min/max/close)
-    render as white icons — visible on colored backgrounds.
+    Also sets immersive dark mode (default on) so the window controls
+    (min/max/close) render as white icons; pass dark=False on light captions.
 
     Silent no-op on non-Windows or pre-Win11 systems.
     """
@@ -36,7 +36,7 @@ def set_title_bar_color(window, bg_hex, text_hex="#FFFFFF"):
             return b << 16 | g << 8 | r
 
         # DWMWA_USE_IMMERSIVE_DARK_MODE = 20 (white window controls)
-        dm = c_int(1)
+        dm = c_int(1 if dark else 0)
         windll.dwmapi.DwmSetWindowAttribute(
             hwnd, 20, byref(dm), ctypes.sizeof(dm))
         # DWMWA_CAPTION_COLOR = 35
